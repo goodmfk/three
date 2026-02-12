@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document</title>
+  <link rel="stylesheet" href="../css/initStyle.css" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</head>
+
+<body>
+  <div class="d-flex gap-2 m-3">
+    <button class="btn btn-primary" id="loadModel1">Load GB48IB-MPB</button>
+    <button class="btn btn-primary" id="loadModel2">Load B1827FHRIB-MPB</button>
+    <button class="btn btn-primary" id="loadModel3">Load B3D1827IB-MPB</button>
+    <button class="btn btn-primary" id="loadModel4">Load SBB18RIB-MPB</button>
+    <!-- <button class="btn btn-primary" id="loadModel5">Load BEP28.530-2PK</button> -->
+    <button class="btn btn-danger" id="deleteButton" style="display: none;">Delete Selected</button>
+    <!-- <button class="btn btn-success" id="centerButton">Center Layout</button> -->
+  </div>
+  <div id="app"></div>
+  <script src="../three/initmap.js"></script>
+  <script type="module">
+    import * as THREE from "three";
+    import { Viewer } from "../three/core/Viewer.js";
+    import  PickTool  from "../three/tools/pick/PickTool.js";
+    import  DragTool  from "../three/tools/drag/DragTool.js";
+    import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+    const container = document.getElementById("app");
+
+    const viewer = new Viewer(container, {
+      tools: {
+        pick: true,
+      }
+    });
+console.log(viewer.layoutManager);
+
+
+    const pick = new PickTool(viewer, {
+      focus: {
+        enabled: true,
+     //   distance: 3,
+        duration: 0.35
+      }
+    });
+
+    const deleteButton = document.getElementById('deleteButton');
+
+    pick.hooks.onSelect = function(tool, object) {
+        deleteButton.style.display = 'inline-block';
+    };
+
+    pick.hooks.onClear = function(tool) {
+        deleteButton.style.display = 'none';
+    };
+
+    deleteButton.addEventListener('click', function() {
+        const selectedObject = pick.selectedObject;
+        if (selectedObject) {
+            if (selectedObject.parent) {
+                selectedObject.parent.remove(selectedObject);
+            }
+            pick.clearSelection();
+            
+            // 删除模型后调整相机位置
+            viewer.getLayoutManager().layoutCenter();
+            fitCameraToObjects(viewer.camera, viewer.controls, viewer.layoutManager.getRoot().children);
+        }
+    });
+    
+    function fitCameraToObjects(camera, controls, objects, offset = 1.25) {
+        if (!objects || objects.length === 0) return;
+
+        const box = new THREE.Box3();
+
+        objects.forEach(obj => box.expandByObject(obj));
+
+        const size = box.getSize(new THREE.Vector3());
+        const center = box.getCenter(new THREE.Vector3());
+
+        const maxSize = Math.max(size.x, size.y, size.z);
+        const fov = THREE.MathUtils.degToRad(camera.fov);
+        let distance = maxSize / (2 * Math.tan(fov / 2));
+
+        distance *= offset;
+
+        const dir = new THREE.Vector3()
+            .subVectors(camera.position, controls.target)
+            .normalize();
+
+        camera.position.copy(center).add(dir.multiplyScalar(distance));
+
+        camera.near = distance / 100;
+        camera.far = distance * 100;
+        camera.updateProjectionMatrix();
+
+        controls.target.copy(center);
+        controls.update();
+    }
+
+
+    viewer.tools.register("pick", pick);
+    viewer.tools.enable("pick");
+
+    
+const drag = new DragTool(viewer);
+
+viewer.tools.register("drag", drag);
+    viewer.tools.enable("drag");
+
+    const loadModel1Btn = document.getElementById('loadModel1');
+    const loadModel2Btn = document.getElementById('loadModel2');
+    const loadModel3Btn = document.getElementById('loadModel3');
+    const loadModel4Btn = document.getElementById('loadModel4');
+    
+    function calculateTotalWidth() {
+      const root = viewer.layoutManager.getRoot();
+      if (!root || root.children.length === 0) return 0;
+      
+      let totalWidth = 0;
+      root.children.forEach(child => {
+        const box = new THREE.Box3().setFromObject(child);
+        const size = box.getSize(new THREE.Vector3());
+        totalWidth += size.x;
+      });
+      return totalWidth;
+    }
+    
+    loadModel1Btn.addEventListener('click', async () => {
+      try {
+        const model = await viewer.modelManager.loadModel("../glb/GB48IB-MPB.glb");
+        const box = new THREE.Box3().setFromObject(model.scene);
+        const size = box.getSize(new THREE.Vector3());
+        
+        const totalWidth = calculateTotalWidth();
+        const newPosition = new THREE.Vector3(totalWidth, 0, 0);
+        
+        const instance = viewer.instanceManager.createInstance(model, {
+          position: newPosition
+        });
+        
+        viewer.getLayoutManager().layoutCenter();
+        fitCameraToObjects(viewer.camera, viewer.controls, viewer.layoutManager.getRoot().children);
+      } catch (error) {
+        console.error("Error loading model 1:", error);
+      }
+    });
+    
+    loadModel2Btn.addEventListener('click', async () => {
+      try {
+        const model = await viewer.modelManager.loadModel("../glb/B1827FHRIB-MPB.glb");
+        const box = new THREE.Box3().setFromObject(model.scene);
+        const size = box.getSize(new THREE.Vector3());
+        
+        const totalWidth = calculateTotalWidth();
+        const newPosition = new THREE.Vector3(totalWidth, 0, 0);
+        
+        const instance = viewer.instanceManager.createInstance(model, {
+          position: newPosition
+        });
+        
+        viewer.getLayoutManager().layoutCenter();
+        fitCameraToObjects(viewer.camera, viewer.controls, viewer.layoutManager.getRoot().children);
+      } catch (error) {
+        console.error("Error loading model 2:", error);
+      }
+    });
+    
+    loadModel3Btn.addEventListener('click', async () => {
+      try {
+        const model = await viewer.modelManager.loadModel("../glb/B3D1827IB-MPB.glb");
+        const box = new THREE.Box3().setFromObject(model.scene);
+        const size = box.getSize(new THREE.Vector3());
+        
+        const totalWidth = calculateTotalWidth();
+        const newPosition = new THREE.Vector3(totalWidth, 0, 0);
+        
+        const instance = viewer.instanceManager.createInstance(model, {
+          position: newPosition
+        });
+        
+        viewer.getLayoutManager().layoutCenter();
+        fitCameraToObjects(viewer.camera, viewer.controls, viewer.layoutManager.getRoot().children);
+      } catch (error) {
+        console.error("Error loading model 3:", error);
+      }
+    });
+    
+    loadModel4Btn.addEventListener('click', async () => {
+      try {
+        const model = await viewer.modelManager.loadModel("../glb/SBB18RIB-MPB.glb");
+        const box = new THREE.Box3().setFromObject(model.scene);
+        const size = box.getSize(new THREE.Vector3());
+        
+        const totalWidth = calculateTotalWidth();
+        const newPosition = new THREE.Vector3(totalWidth, 0, 0);
+        
+        const instance = viewer.instanceManager.createInstance(model, {
+          position: newPosition
+        });
+        
+        viewer.getLayoutManager().layoutCenter();
+        fitCameraToObjects(viewer.camera, viewer.controls, viewer.layoutManager.getRoot().children);
+      } catch (error) {
+        console.error("Error loading model 4:", error);
+      }
+    });
+    
+    async function initializeScene() {
+      try {
+        const model1 = await viewer.modelManager.loadModel("../glb/GB48IB-MPB.glb");
+        const model2 = await viewer.modelManager.loadModel("../glb/B1827FHRIB-MPB.glb");
+        const model3 = await viewer.modelManager.loadModel("../glb/B3D1827IB-MPB.glb");
+        const model4 = await viewer.modelManager.loadModel("../glb/SBB18RIB-MPB.glb");
+        // const model5 = await viewer.modelManager.loadModel("../glb/BEP28.530-2PK.glb");
+        
+        const box1 = new THREE.Box3().setFromObject(model1.scene);
+        const size1 = box1.getSize(new THREE.Vector3());
+        
+        const box2 = new THREE.Box3().setFromObject(model2.scene);
+        const size2 = box2.getSize(new THREE.Vector3());
+        
+        const box3 = new THREE.Box3().setFromObject(model3.scene);
+        const size3 = box3.getSize(new THREE.Vector3());
+        
+        const box4 = new THREE.Box3().setFromObject(model4.scene);
+        const size4 = box4.getSize(new THREE.Vector3());
+        
+        // const box5 = new THREE.Box3().setFromObject(model5.scene);
+        // const size5 = box5.getSize(new THREE.Vector3());
+        
+        const totalWidth = size1.x + size2.x + size3.x + size4.x;
+        let currentX = -totalWidth / 2;
+        
+        const instance1 = viewer.instanceManager.createInstance(model1, {
+          position: new THREE.Vector3(currentX + size1.x / 2, 0, 0)
+        });
+        currentX += size1.x;
+        
+        const instance2 = viewer.instanceManager.createInstance(model2, {
+          position: new THREE.Vector3(currentX + size2.x / 2, 0, 0)
+        });
+        currentX += size2.x;
+        
+        const instance3 = viewer.instanceManager.createInstance(model3, {
+          position: new THREE.Vector3(currentX + size3.x / 2, 0, 0)
+        });
+        currentX += size3.x;
+        
+        const instance4 = viewer.instanceManager.createInstance(model4, {
+          position: new THREE.Vector3(currentX + size4.x / 2, 0, 0)
+        });
+        currentX += size4.x;
+      } catch (error) {
+        console.error("Error loading models:", error);
+      }
+      
+      setTimeout(() => {
+        viewer.getLayoutManager().layoutCenter();
+        fitCameraToObjects(viewer.camera, viewer.controls, viewer.layoutManager.getRoot().children);
+      }, 100);
+    }
+
+    initializeScene();
+    viewer.start();
+  </script>
+
+</body>
+
+</html>

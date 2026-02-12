@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>Three.js Viewer - Drag / Rotate / Selection Ring</title>
+
+    <style>
+         /* 让页面完全铺满窗口，禁用滚动条
+        three.js 的 canvas 会撑满容器 */
+         html, body {
+             margin: 0;
+             width: 100%;
+             height: 100%;
+             overflow: hidden;
+         }
+
+         /* three.js 渲染容器 */
+         #app {
+             width: 100vw;
+             height: 100vh;
+         }
+    </style>
+</head>
+
+<body>
+    <div style="position: absolute; top: 10px; left: 10px; z-index: 100;">
+        <button id="addButton" style="padding: 10px; background: #00aaff; color: white; border: none; border-radius: 5px; cursor: pointer;">Add Cabinet</button>
+    </div>
+    <div id="app"></div>
+
+    <script type="module">
+        /* =========================================================
+           1) 引入 three.js 核心 + 控制器 + glb 加载器 + HDR 加载器
+           ========================================================= */
+
+        import * as THREE from "https://esm.sh/three@0.160.0";
+
+        /* OrbitControls：负责相机旋转/缩放/平移 */
+        import { OrbitControls } from "https://esm.sh/three@0.160.0/examples/jsm/controls/OrbitControls.js";
+
+        /* GLTFLoader：负责加载 .glb / .gltf 模型 */
+        import { GLTFLoader } from "https://esm.sh/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
+
+        /* RGBELoader：加载 .hdr 环境贴图（提供 PBR 反射/光照） */
+        import { RGBELoader } from "https://esm.sh/three@0.160.0/examples/jsm/loaders/RGBELoader.js";
+
+        /* 获取容器 */
+        const container = document.getElementById("app");
+
+        /* =========================================================
+           2) Scene / Camera 初始化
+           ========================================================= */
+
+        /* 场景：3D 世界根节点 */
+        const scene = new THREE.Scene();
+
+        /* 你这里设置了灰色背景
+           ⚠️ 注意：后面你会 scene.clear()，会把 background 一起清掉
+           另外 HDR 回调里也会 scene.background = null
+           所以如果你最终看到不是灰色背景，这是原因 */
+        scene.background = new THREE.Color(0xf2f2f2);
+
+        /* 透视相机：更接近真实视觉 */
+        const camera = new THREE.PerspectiveCamera(
+            60,                                 // 视角
+            window.innerWidth / window.innerHeight, // 宽高比
+            0.1,                                // 近裁剪
+            100                                 // 远裁剪
+        );
+
+        /* 相机位置：略抬高 + 向后 */
+        camera.position.set(0, 3, 6);
+
+        /* 看向原点 */
+        camera.lookAt(0, 0, 0);
+
+        /* =========================================================
+           3) HDR 环境贴图（让 PBR 材质更有质感）
+           ========================================================= */
+
+        const rgbeLoader = new RGBELoader();
+
+        rgbeLoader.load(
+            /* HDR 地址 */
+            "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/studio_small_09_1k.hdr",
+            (hdr) => {
+                /* 必须指定 mapping，否则不会用于反射 */
+                hdr.mapping = THREE.EquirectangularReflectionMapping;
+
+                /* scene.environment：提供 PBR 材质反射/环境光照（核心） */
+                scene.environment = hdr;
+
+                /* ⚠️ 你这里写 scene.background = null
+                   意思是：把场景背景图清掉
+                   如果你想用灰色背景而不是 HDR 背景，就应该保留灰色
+                   但这里你写 null，会让背景变透明/默认 */
+                scene.background = null;
+            }
+        );
+
+        /* =========================================================
+           4) Renderer 渲染器
+           ========================================================= */
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+
+        /* 设置 canvas 尺寸 */
+        renderer.setSize(window.innerWidth, window.innerHeight);
+
+        /* 适配高 DPI 屏幕，避免模糊 */
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+        /* 把 renderer 的 canvas 插入页面 */
+        container.appendChild(renderer.domElement);
+
+        /* =========================================================
+           5) OrbitControls（相机交互）
+           ========================================================= */
+
+        const orbit = new OrbitControls(camera, renderer.domElement);
+
+        /* 开启阻尼：旋转/缩放更丝滑 */
+        orbit.enableDamping = true;
+
+        /* 禁用“屏幕平移”，避免平移手感像 2D */
+        orbit.screenSpacePanning = false;
+
+        /* 控制相机围绕哪个点转 */
+        orbit.target.set(0, 0, 0);
+
+        /* 限制相机缩放距离 */
+        orbit.minDistance = 2;
+        orbit.maxDistance = 10;
+
+        /* =========================================================
+           6) 灯光（HDR + 补光）
+           ========================================================= */
+
+        /* ⚠️ scene.clear() 会清除：所有物体、所有灯光、background、environment 等
+           你在 clear 之前设置过 scene.background 和 scene.environment
+           clear 之后这些会被干掉（部分版本行为会不同，但一般都会清掉 Object3D 和 background）
+           所以这句很危险：如果你想清掉物体，应只 remove 物体，而不是 clear */
+
+        scene.clear();
+
+        /* 环境光：整体提亮，避免阴影面全黑 */
+        scene.add(new THREE.AmbientLight(0xffffff, 0.3));
+
+        /* 方向光：提供主光源立体感 */
+        const dir = new THREE.DirectionalLight(0xffffff, 0.6);
+        dir.position.set(5, 10, 5);
+        scene.add(dir);
+
+        /* =========================================================
+           7) 模型加载（GLB）
+           ========================================================= */
+
+        /* 地面高度定义（y=0 表示地面） */
+        const GROUND_Y = 0;
+
+        const loader = new GLTFLoader();
+
+        /* cubes：保存所有可交互对象（用于 raycast / 拖拽 / 吸附） */
+        const cubes = [];
+
+        function fitCameraToObjects(camera, controls, objects, offset = 1.25) {
+            if (!objects.length) return;
+
+            const box = new THREE.Box3();
+
+            // 1️⃣ 把所有对象合并进一个包围盒
+            objects.forEach(obj => box.expandByObject(obj));
+
+            // 2️⃣ 计算中心点 & 尺寸
+            const size = box.getSize(new THREE.Vector3());
+            const center = box.getCenter(new THREE.Vector3());
+
+            // 3️⃣ 计算相机距离（基于 FOV）
+            const maxSize = Math.max(size.x, size.y, size.z);
+            const fov = THREE.MathUtils.degToRad(camera.fov);
+            let distance = maxSize / (2 * Math.tan(fov / 2));
+
+            distance *= offset; // 留白
+
+            // 4️⃣ 设置相机位置（保持当前朝向）
+            const dir = new THREE.Vector3()
+                .subVectors(camera.position, controls.target)
+                .normalize();
+
+            camera.position.copy(center).add(dir.multiplyScalar(distance));
+
+            // 5️⃣ 更新 near / far（很关键）
+            camera.near = distance / 100;
+            camera.far = distance * 100;
+            camera.updateProjectionMatrix();
+
+            // 6️⃣ 让 OrbitControls 对准中心
+            controls.target.copy(center);
+            controls.update();
+        }
+
+     
+
+        /* 临时变量：避免每次 new，减少 GC */
+        const tmpBox = new THREE.Box3();
+        const tmpSize = new THREE.Vector3();
+        const tmpCenter = new THREE.Vector3();
+
+        /* 要加载的 glb 列表 */
+        const urls = [
+            // "../glb/1.glb",
+            // "../glb/2.glb",
+            // "../glb/3.glb",
+            "../glb/33.glb",
+            //"../glb/4.glb"
+        ];
+
+        // 动态生成 positions，根据 urls 数量
+        const positions = [];
+        const spacing = 2.5;  // 物体之间的间距，可以根据需要调整
+
+        // 根据 urls 数量，自动排列位置
+        const startPositionX = -((urls.length - 1) * spacing) / 2; // 计算起始位置，确保居中
+        for (let i = 0; i < urls.length; i++) {
+            const position = new THREE.Vector3(startPositionX + i * spacing, 0, 0); // X轴位置均匀分布
+            positions.push(position);
+        }
+
+
+        let loadedCount = 0;
+
+        /* 依次加载每个 glb */
+        for (let i = 0; i < urls.length; i++) {
+            loader.load(urls[i], (gltf) => {
+                /* gltf.scene 是模型根节点（Group） */
+                const model = gltf.scene;
+
+                /* ---------------------------------------------------------
+                   7.1 统一材质手感（roughness/metalness）
+                   ---------------------------------------------------------
+                   目的：让木材不那么“塑料感”，有点反射但不是金属
+                */
+                model.traverse((child) => {
+                    if (child.isMesh && child.material) {
+                        child.material.roughness = 0.45;
+                        child.material.metalness = 0.05;
+                        child.material.needsUpdate = true;
+                    }
+                });
+
+                /* ---------------------------------------------------------
+                   7.2 计算包围盒（Box3）
+                   ---------------------------------------------------------
+                   目的：
+                   - 得到模型真实尺寸（x/y/z）
+                   - 得到中心点 center（用于把 pivot 对齐到中心）
+                */
+                tmpBox.setFromObject(model);
+                tmpBox.getSize(tmpSize);
+                tmpBox.getCenter(tmpCenter);
+
+                /* minY/maxY 你现在算了但没用上
+                   如果要用真实底部贴地，minY 是关键 */
+                const minY = tmpBox.min.y;
+                const maxY = tmpBox.max.y;
+
+                /* half 尺寸：用于吸附计算（面中心 = position + normal * half） */
+                const halfX = tmpSize.x / 2;
+                const halfY = tmpSize.y / 2;
+                const halfZ = tmpSize.z / 2;
+
+                /* ---------------------------------------------------------
+                   7.3 把模型中心移到自身原点
+                   ---------------------------------------------------------
+                   这是吸附/拖拽要“准”的关键：
+                   - 如果 pivot 不在中心，你用 position 计算面位置会偏
+                */
+                model.position.sub(tmpCenter);
+
+                /* ---------------------------------------------------------
+                   7.4 让模型站在地面上
+                   ---------------------------------------------------------
+                   由于 pivot 已经在中心：
+                   - model 的底部在 y = -halfY
+                   - 所以要让底部落在 GROUND_Y，就要把整体抬到 GROUND_Y + halfY
+                */
+                model.position.y = GROUND_Y + halfY;
+
+                /* 你这里存了 bottomOffsetY，但后面 updateSelectionRing 并没用它 */
+                model.userData.bottomOffsetY = halfY + minY;
+
+                /* ---------------------------------------------------------
+                   7.5 设置初始摆放位置（X/Z）
+                   --------------------------------------------------------- */
+                model.position.x += positions[i].x;
+                model.position.z += positions[i].z;
+
+                /* ---------------------------------------------------------
+                   7.6 存 userData（后面拾取 / 吸附 / 光圈都要用）
+                   --------------------------------------------------------- */
+                model.userData.isPickRoot = true;                 // 标记：这是拾取根
+                model.userData.halfX = halfX;                     // 半宽
+                model.userData.halfY = halfY;                     // 半高
+                model.userData.halfZ = halfZ;                     // 半深
+                model.userData.groundY = GROUND_Y + halfY;         // 拖拽时锁定的 y
+                model.userData.ringRadius = Math.max(halfX, halfZ) * 0.9; // 光圈半径
+
+                /* 加入场景 & 加入可交互列表 */
+                scene.add(model);
+                cubes.push(model);
+
+                loadedCount++;
+
+                // ✅ 全部加载完成后自动居中
+                if (loadedCount === urls.length) {
+                    fitCameraToObjects(camera, orbit, cubes);
+                }
+            });
+        }
+
+        /* =========================================================
+           8) 选中光圈（Ring）
+           ========================================================= */
+
+        /* RingGeometry 默认在 XY 平面，我们后面转到 XZ 平面贴地 */
+        const ringGeometry = new THREE.RingGeometry(0.6, 0.75, 64);
+
+        /* MeshBasicMaterial：不受光照影响（像 UI），看起来更稳定 */
+        const ringMaterial = new THREE.MeshBasicMaterial({
+            color: 0x00aaff,
+            transparent: true,
+            opacity: 0.8,
+            side: THREE.DoubleSide,
+            depthTest: true,     // 被模型遮挡（更真实）
+            depthWrite: false    // 不写深度，避免影响其他物体
+        });
+
+        const selectionRing = new THREE.Mesh(ringGeometry, ringMaterial);
+
+        /* 把光圈从 XY 平面转到 XZ 平面（躺在地上） */
+        selectionRing.rotation.x = -Math.PI / 2;
+
+        selectionRing.visible = false;
+        scene.add(selectionRing);
+
+        const _box = new THREE.Box3();
+        const _ringScale = new THREE.Vector3();
+
+        /* ---------------------------------------------------------
+           updateSelectionRing：让光圈永远贴在模型脚底
+           ---------------------------------------------------------
+           核心思路：
+           - 每次都重新 setFromObject 得到真实包围盒（因为模型会移动/旋转）
+           - 光圈 X/Z 用包围盒中心
+           - 光圈 Y 用包围盒 min.y（真实底部）
+        */
+        function updateSelectionRing(object) {
+            if (!object) {
+                selectionRing.visible = false;
+                return;
+            }
+
+            _box.setFromObject(object);
+
+            const centerX = (_box.min.x + _box.max.x) / 2;
+            const centerZ = (_box.min.z + _box.max.z) / 2;
+
+            /* bottomY 就是包围盒真实底部（世界坐标） */
+            const bottomY = _box.min.y;
+
+            /* 根据模型尺寸缩放光圈（否则不同柜体光圈大小一样会不对） */
+            const r = object.userData.ringRadius || 0.6;
+            _ringScale.set(r / 0.6, r / 0.6, 1);
+
+            selectionRing.visible = true;
+            selectionRing.scale.copy(_ringScale);
+
+            /* Y = bottomY + 0.01 是为了避免 z-fighting（闪烁） */
+            selectionRing.position.set(centerX, bottomY + 0.01, centerZ);
+        }
+
+        /* =========================================================
+           9) Raycaster & 拖拽/旋转状态
+           ========================================================= */
+
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        /* 地面平面：用于鼠标投射得到地面交点（拖拽） */
+        const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -GROUND_Y);
+
+        let activeObject = null;
+
+        let isDragging = false;
+        const grabOffset = new THREE.Vector3();
+
+        let isRotating = false;
+        const rotateStart = new THREE.Vector2();
+        const rotateStartEuler = new THREE.Euler();
+        const rotateSpeed = 0.01;
+
+        /* 屏幕坐标 → NDC（标准写法） */
+        function updateMouseNDC(event) {
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+        }
+
+        /* 找到你定义的拾取根（GLB 里面点到子 Mesh 也能选整个柜体） */
+        function findPickRoot(obj) {
+            let cur = obj;
+            while (cur && !cur.userData.isPickRoot) {
+                cur = cur.parent;
+            }
+            return cur;
+        }
+
+        /* =========================================================
+           10) 吸附逻辑（face-to-face）
+           ========================================================= */
+
+        /* SNAP_DISTANCE：小于这个距离才“吸” */
+        const SNAP_DISTANCE = 0.3;
+
+        /* 四个水平面法线（不处理顶/底面，避免吸到上下） */
+        const FACES = [
+            new THREE.Vector3(1, 0, 0),
+            new THREE.Vector3(-1, 0, 0),
+            new THREE.Vector3(0, 0, 1),
+            new THREE.Vector3(0, 0, -1)
+        ];
+
+        /* ---------------------------------------------------------
+           getFace：计算某个物体某个面（世界空间）
+           输出：
+           - normal：这个面的世界法线方向
+           - center：这个面的世界中心点（用来算距离/对齐）
+           --------------------------------------------------------- */
+        function getFace(m, localNormal) {
+            /* 把局部法线变成世界法线（乘物体旋转） */
+            const normal = localNormal.clone().applyQuaternion(m.quaternion);
+
+            /* extent：这个方向上要走多少才到“面中心”
+               - x 方向用 halfX
+               - z 方向用 halfZ */
+            let extent = 0.5;
+            if (Math.abs(localNormal.x) === 1) extent = m.userData.halfX || 0.5;
+            if (Math.abs(localNormal.z) === 1) extent = m.userData.halfZ || 0.5;
+
+            /* 面中心 = 物体中心 + normal * extent */
+            const center = m.position.clone().add(normal.clone().multiplyScalar(extent));
+
+            return { normal, center };
+        }
+
+        /* ---------------------------------------------------------
+           trySnap：尝试让 moving 吸到其它物体上
+           核心判断：
+           1) 面必须是“面对面”（法线相反）
+           2) 两个面的中心点距离要足够近
+           3) 把 moving 平移 delta，使面中心完全重合
+           4) 再调整 Y 保持贴地
+           --------------------------------------------------------- */
+        function trySnap(moving, others) {
+            for (const target of others) {
+                if (target === moving) continue;
+
+                for (const fA of FACES) {
+                    const faceA = getFace(moving, fA);
+
+                    for (const fB of FACES) {
+                        const faceB = getFace(target, fB);
+
+                        /* 面必须面对面：
+                           dot=-1 表示完全相反
+                           这里用 > -0.99 来过滤不是面对面的 */
+                        if (faceA.normal.dot(faceB.normal) > -0.99) continue;
+
+                        /* delta 是 moving 的面中心到 target 的面中心的偏移 */
+                        const delta = faceB.center.clone().sub(faceA.center);
+
+                        /* dist 是两个面中心的距离 */
+                        const dist = delta.length();
+                        if (dist > SNAP_DISTANCE) continue;
+
+                        /* 平移 moving，使两个面中心完全对齐 */
+                        moving.position.add(delta);
+
+                        /* 你这段 angle 计算的目的是让它“旋转对齐”
+                           但现在的实现只对 y 轴做近似角度修正，
+                           如果模型不是正方体/或者 pivot 不一致，会出现吸附不一致 */
+                        const angle =
+                            Math.atan2(faceB.normal.x, faceB.normal.z) -
+                            Math.atan2(-faceA.normal.x, -faceA.normal.z);
+
+                        moving.rotation.y += angle;
+
+                        /* 锁住贴地高度，避免吸附后飘起来/埋下去 */
+                        moving.position.y = moving.userData.groundY || moving.position.y;
+
+                        return;
+                    }
+                }
+            }
+        }
+
+        /* =========================================================
+           11) pointerdown：选中 / 开始拖拽 / 开始旋转
+           ========================================================= */
+
+        renderer.domElement.addEventListener("pointerdown", (event) => {
+            updateMouseNDC(event);
+            raycaster.setFromCamera(mouse, camera);
+
+            /* intersectObjects 第二个参数 true：可命中子节点 Mesh
+               因为 glb scene 里是 Group + Mesh 的树 */
+            const intersects = raycaster.intersectObjects(cubes, true);
+
+            /* 点到空白：取消选中并隐藏光圈 */
+            if (intersects.length === 0) {
+                activeObject = null;
+                updateSelectionRing(null);
+                return;
+            }
+
+            /* 找到拾取根（整柜体） */
+            const picked = findPickRoot(intersects[0].object);
+            if (!picked) return;
+
+            activeObject = picked;
+            updateSelectionRing(activeObject);
+
+            /* 正在操作物体时禁用 OrbitControls，避免拖拽和相机打架 */
+            orbit.enabled = false;
+
+            /* 右键：进入旋转模式 */
+            if (event.button === 2) {
+                isRotating = true;
+                rotateStart.set(event.clientX, event.clientY);
+                rotateStartEuler.copy(activeObject.rotation);
+                return;
+            }
+
+            /* 左键：进入拖拽模式
+               原理：求鼠标射线与地面平面的交点 hitPoint
+               grabOffset = 物体位置 - hitPoint
+               后面移动时：position = hitPoint + grabOffset
+               这样能保证“抓哪里跟哪里”不会跳 */
+            const hitPoint = new THREE.Vector3();
+            if (raycaster.ray.intersectPlane(groundPlane, hitPoint)) {
+                grabOffset.copy(activeObject.position).sub(hitPoint);
+                isDragging = true;
+            }
+        });
+
+        /* =========================================================
+           12) pointermove：拖拽 / 旋转更新
+           ========================================================= */
+
+        renderer.domElement.addEventListener("pointermove", (event) => {
+            if (!activeObject) return;
+
+            /* ---------- 旋转逻辑 ---------- */
+            if (isRotating) {
+                const dx = event.clientX - rotateStart.x;
+                const dy = event.clientY - rotateStart.y;
+
+                /* 水平拖动 => 绕 Y 轴转（左右旋转） */
+                activeObject.rotation.y = rotateStartEuler.y + dx * rotateSpeed;
+
+                /* 垂直拖动 => 绕 X 轴转（上下俯仰），并限制范围防翻车 */
+                activeObject.rotation.x = THREE.MathUtils.clamp(
+                    rotateStartEuler.x + dy * rotateSpeed,
+                    -Math.PI / 2,
+                    Math.PI / 2
+                );
+                return;
+            }
+
+            /* ---------- 拖拽逻辑 ---------- */
+            if (!isDragging) return;
+
+            updateMouseNDC(event);
+            raycaster.setFromCamera(mouse, camera);
+
+            const hitPoint = new THREE.Vector3();
+            if (raycaster.ray.intersectPlane(groundPlane, hitPoint)) {
+                /* 位置跟随鼠标投影点 */
+                activeObject.position.copy(hitPoint).add(grabOffset);
+
+                /* 贴地：锁住 y，避免被 hitPoint 的 y 带走 */
+                activeObject.position.y = activeObject.userData.groundY || activeObject.position.y;
+
+                /* 吸附：拖动过程中每帧尝试吸附 */
+                trySnap(activeObject, cubes);
+
+                /* 吸附后再锁一遍 y，防止吸附 delta 把 y 也带偏 */
+                activeObject.position.y = activeObject.userData.groundY || activeObject.position.y;
+
+                /* 更新光圈位置 */
+                updateSelectionRing(activeObject);
+            }
+        });
+
+        /* =========================================================
+           13) pointerup / leave：结束状态
+           ========================================================= */
+
+        function clearState() {
+            isDragging = false;
+            isRotating = false;
+            orbit.enabled = true;
+            fitCameraToObjects(camera, orbit, cubes);
+
+        }
+
+        renderer.domElement.addEventListener("pointerup", clearState);
+        renderer.domElement.addEventListener("pointerleave", clearState);
+
+        /* 禁用右键菜单，否则右键旋转会弹浏览器菜单 */
+        renderer.domElement.addEventListener("contextmenu", (e) => e.preventDefault());
+
+        /* =========================================================
+           14) 键盘旋转：按左右键以 45° 步进旋转
+           ========================================================= */
+
+        const STEP = Math.PI / 4;
+
+        window.addEventListener("keydown", (e) => {
+            if (!activeObject) return;
+
+            if (e.key === "ArrowLeft") activeObject.rotation.y -= STEP;
+            if (e.key === "ArrowRight") activeObject.rotation.y += STEP;
+        });
+
+        /* =========================================================
+           15) 添加柜子按钮
+           ========================================================= */
+
+        const addButton = document.getElementById('addButton');
+        addButton.addEventListener('click', () => {
+            try {
+                loader.load('../glb/33.glb', (gltf) => {
+                const model = gltf.scene;
+                
+                // 统一材质手感
+                model.traverse((child) => {
+                    if (child.isMesh && child.material) {
+                        child.material.roughness = 0.45;
+                        child.material.metalness = 0.05;
+                        child.material.needsUpdate = true;
+                    }
+                });
+                
+                // 计算包围盒
+                tmpBox.setFromObject(model);
+                tmpBox.getSize(tmpSize);
+                tmpBox.getCenter(tmpCenter);
+                
+                // 半尺寸
+                const halfX = tmpSize.x / 2;
+                const halfY = tmpSize.y / 2;
+                const halfZ = tmpSize.z / 2;
+                
+                // 把模型中心移到自身原点
+                model.position.sub(tmpCenter);
+                
+                // 让模型站在地面上
+                model.position.y = GROUND_Y + halfY;
+                
+                // 计算新位置，避免重合
+                let maxX = 0;
+                for (const cube of cubes) {
+                    const cubeBox = new THREE.Box3().setFromObject(cube);
+                    maxX = Math.max(maxX, cubeBox.max.x);
+                }
+                
+                const offsetX = maxX + halfX * 2 + 0.5; // 0.5为间距
+                model.position.x = offsetX;
+                
+                // 存储userData
+                model.userData.isPickRoot = true;
+                model.userData.halfX = halfX;
+                model.userData.halfY = halfY;
+                model.userData.halfZ = halfZ;
+                model.userData.groundY = GROUND_Y + halfY;
+                model.userData.ringRadius = Math.max(halfX, halfZ) * 0.9;
+                
+                // 加入场景和cubes数组
+                scene.add(model);
+                cubes.push(model);
+                
+                // 自动居中
+                fitCameraToObjects(camera, orbit, cubes);
+                
+            });
+            } catch (error) {
+                console.error('Error adding cabinet:', error);
+            }
+        });
+
+        /* =========================================================
+           15) Resize：窗口变化时更新相机&渲染尺寸
+           ========================================================= */
+
+        window.addEventListener("resize", () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);            
+        });
+
+        /* =========================================================
+           16) 渲染循环
+           ========================================================= */
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            /* OrbitControls 的阻尼更新必须每帧调用 */
+            orbit.update();
+
+            renderer.render(scene, camera);
+        }
+
+        animate();
+    </script>
+</body>
+</html>

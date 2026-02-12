@@ -1,0 +1,49 @@
+body {
+    margin: 0;
+    padding: 10px;
+    overflow: hidden;
+    width: 100%;
+    height: 100vh;
+
+}
+
+* {
+    box-sizing: border-box;
+}
+
+#app-container,
+#app {
+    width: 100%;
+    height: 100%;
+    border: 1px solid yellowgreen;
+}
+
+#app-container, #app{
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(
+    circle at center,
+    #ffffff 0%,
+    #eeeeee 30%,
+    #bfbfbf 60%,
+    #353535 100%
+  );
+}
+
+canvas {
+  cursor: grab;
+}
+
+canvas:active {
+  cursor: -webkit-grabbing;
+  cursor: grabbing;
+}
+
+canvas:hover {
+  cursor: grab;
+}
+
+/* 当鼠标悬停在可交互物体上时 */
+canvas.object-hover {
+  cursor: pointer;
+}
