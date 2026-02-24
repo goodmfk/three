@@ -46,13 +46,10 @@ export class Viewer {
         this.modelManager = new ModelManager();
         this.layoutState = new LayoutState();
 
-        // 初始化WorldManager
         this.worldManager = new WorldManager(this.config.world);
 
-        // 初始化LayoutManager，传入WorldManager
         this.layoutManager = new LayoutManager(this.scene, this.worldManager);
 
-        // 初始化InstanceManager，传入WorldManager
         this.instanceManager = new InstanceManager(this.layoutManager.getRoot(), this.layoutState, this.worldManager);
 
         this.init();
@@ -66,11 +63,9 @@ export class Viewer {
         this.initResize();
         this.initDefaultTools();
 
-        // 设置WorldManager的scene
         this.worldManager.setScene(this.scene);
 
-        // 显示世界边界
-        this.worldManager.showBoundary();
+       // this.worldManager.showBoundary();
     }
 
     initRenderer() {
@@ -89,14 +84,13 @@ export class Viewer {
         const { clientWidth, clientHeight } = this.container;
 
         this.camera = new THREE.PerspectiveCamera(
-            45, // 与aaa2.html保持一致，使用60度视角
+            45,
             clientWidth / clientHeight,
             0.1,
             1000
         );
 
-        //this.camera.position.set(0, 2, 3); // 调整相机位置，让模型看起来更大
-        this.camera.position.set(0, 3, 6); // 与aaa2.html保持一致，使用更接近的初始位置
+        this.camera.position.set(0, 3, 6);
         this.scene.add(this.camera);
     }
 
@@ -117,9 +111,9 @@ export class Viewer {
             this.renderer.domElement
         );
         this.controls.enableDamping = true;
-        this.controls.screenSpacePanning = false; // 禁用屏幕平移，与aaa2.html保持一致
-        this.controls.target.set(0, 0, 0); // 控制相机围绕原点旋转，与aaa2.html保持一致
-        this.controls.minDistance = 2; // 限制相机缩放距离，与aaa2.html保持一致
+        this.controls.screenSpacePanning = false;
+        this.controls.target.set(0, 0, 0);
+        this.controls.minDistance = 2;
         this.controls.maxDistance = 10;
         this.controls.minPolarAngle = 0;
         this.controls.maxPolarAngle = Math.PI * 0.5;
@@ -180,6 +174,148 @@ export class Viewer {
         requestAnimationFrame(loop);
     }
 
+    _baseCameraDistance = null;
+    _lastCameraAdjustTime = 0;
+    _cameraAdjustCooldown = 500;
+    _lastBoundingBoxSize = null;
+    _cameraDistanceThreshold = 0.8;
+
+    adjustCameraAfterDrag() {
+        const root = this.layoutManager.getRoot();
+        if (!root || root.children.length === 0) return;
+
+        const box = new THREE.Box3();
+        root.children.forEach(child => box.expandByObject(child));
+
+        if (box.isEmpty()) return;
+
+        const center = new THREE.Vector3();
+        box.getCenter(center);
+
+        const size = new THREE.Vector3();
+        box.getSize(size);
+        const currentSize = size.length();
+
+        const now = Date.now();
+        if (now - this._lastCameraAdjustTime < this._cameraAdjustCooldown) {
+            if (this.controls) {
+                this.controls.target.copy(center);
+                this.controls.update();
+            }
+            return;
+        }
+
+        let needAdjustment = this._needCameraAdjustment(box);
+
+        if (!needAdjustment && this._lastBoundingBoxSize) {
+            const sizeRatio = currentSize / this._lastBoundingBoxSize;
+            if (sizeRatio < this._cameraDistanceThreshold) {
+                needAdjustment = true;
+            }
+        }
+
+        if (needAdjustment) {
+            const targetPosition = new THREE.Vector3();
+            const targetTarget = new THREE.Vector3();
+
+            const maxSize = Math.max(size.x, size.y, size.z);
+            const fov = THREE.MathUtils.degToRad(this.camera.fov);
+            let distance = maxSize / (2 * Math.tan(fov / 2));
+            distance *= 1.25;
+
+            let controlsTarget = new THREE.Vector3(0, 0, 0);
+            if (this.controls && this.controls.target) {
+                controlsTarget.copy(this.controls.target);
+            }
+
+            const dir = new THREE.Vector3().subVectors(this.camera.position, controlsTarget).normalize();
+
+            targetPosition.copy(center).add(dir.multiplyScalar(distance));
+            targetTarget.copy(center);
+
+            this.camera.near = distance / 100;
+            this.camera.far = distance * 100;
+            this.camera.updateProjectionMatrix();
+
+            this._smoothlyMoveCameraTo(targetPosition, targetTarget);
+
+            this._lastCameraAdjustTime = now;
+        } else {
+            if (this.controls) {
+                this.controls.target.copy(center);
+                this.controls.update();
+            }
+        }
+
+        this._lastBoundingBoxSize = currentSize;
+    }
+
+    _needCameraAdjustment(box) {
+        const frustum = new THREE.Frustum();
+        const cameraMatrix = new THREE.Matrix4();
+        cameraMatrix.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse);
+        frustum.setFromProjectionMatrix(cameraMatrix);
+
+        const points = [
+            new THREE.Vector3(box.min.x, box.min.y, box.min.z),
+            new THREE.Vector3(box.max.x, box.min.y, box.min.z),
+            new THREE.Vector3(box.min.x, box.max.y, box.min.z),
+            new THREE.Vector3(box.max.x, box.max.y, box.min.z),
+            new THREE.Vector3(box.min.x, box.min.y, box.max.z),
+            new THREE.Vector3(box.max.x, box.min.y, box.max.z),
+            new THREE.Vector3(box.min.x, box.max.y, box.max.z),
+            new THREE.Vector3(box.max.x, box.max.y, box.max.z)
+        ];
+
+        for (const point of points) {
+            if (!frustum.containsPoint(point)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    _smoothlyMoveCameraTo(targetPosition, targetTarget, duration = 500) {
+        const startTime = Date.now();
+        const startPosition = this.camera.position.clone();
+        const startTarget = this.controls ? this.controls.target.clone() : new THREE.Vector3();
+
+        const animate = () => {
+            const elapsed = Date.now() - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+
+            const easeProgress = this._easeOutCubic(progress);
+
+            this.camera.position.lerpVectors(startPosition, targetPosition, easeProgress);
+
+            if (this.controls) {
+                this.controls.target.lerpVectors(startTarget, targetTarget, easeProgress);
+                this.controls.update();
+            }
+
+            if (progress < 1) {
+                requestAnimationFrame(animate);
+            }
+        };
+
+        animate();
+    }
+
+    _easeOutCubic(t) {
+        return 1 - Math.pow(1 - t, 3);
+    }
+
+    smoothlyMoveCamera(targetPosition, targetTarget) {
+        const alpha = 0.2;
+
+        this.camera.position.lerp(targetPosition, alpha);
+        if (this.controls) {
+            this.controls.target.lerp(targetTarget, alpha);
+            this.controls.update();
+        }
+    }
+
     getLayoutManager() {
         return this.layoutManager;
     }
@@ -188,15 +324,12 @@ export class Viewer {
         return this.layoutManager.getRoot();
     }
 
-    // 简化的模型添加接口
     async addModel(modelPath, options = {}) {
         try {
             const model = await this.modelManager.loadModel(modelPath);
             const instance = this.instanceManager.createInstance(model, options);
 
-            // 总是调用layoutCenter，确保模型添加后整体居中
             this.layoutManager.layoutCenter();
-            // 调整相机，确保所有模型都能在屏幕上显示
             this.fitCameraToObjects();
 
             return instance;
@@ -206,7 +339,6 @@ export class Viewer {
         }
     }
 
-    // 调整相机，确保所有模型都能在屏幕上显示
     fitCameraToObjects() {
         const root = this.layoutManager.getRoot();
         if (!root || root.children.length === 0) return;
@@ -244,19 +376,16 @@ export class Viewer {
         }
     }
 
-    // 批量加载模型的接口
     async addModels(modelPaths, options = {}) {
         try {
             const instances = [];
             const models = [];
 
-            // 先加载所有模型
             for (const modelPath of modelPaths) {
                 const model = await this.modelManager.loadModel(modelPath);
                 models.push(model);
             }
 
-            // 计算总宽度
             let totalWidth = 0;
             const modelSizes = [];
 
@@ -267,17 +396,14 @@ export class Viewer {
                 totalWidth += size.x;
             }
 
-            // 依次放置每个模型
             let currentX = -totalWidth / 2;
 
             for (let i = 0; i < models.length; i++) {
                 const model = models[i];
                 const size = modelSizes[i];
 
-                // 计算当前模型的位置
                 const position = new THREE.Vector3(currentX + size.x / 2, 0, 0);
 
-                // 创建实例
                 const instance = this.instanceManager.createInstance(model, {
                     ...options,
                     position
@@ -287,9 +413,7 @@ export class Viewer {
                 currentX += size.x;
             }
 
-            // 所有模型加载完成后，只调用一次layoutCenter
             this.layoutManager.layoutCenter();
-            // 调整相机，确保所有模型都能在屏幕上显示
             this.fitCameraToObjects();
 
             return instances;
@@ -299,17 +423,14 @@ export class Viewer {
         }
     }
 
-    // 获取WorldManager实例
     getWorldManager() {
         return this.worldManager;
     }
 
-    // 布局中心方法，便于外部调用
     layoutCenter() {
         this.layoutManager.layoutCenter();
     }
 
-    // 布局边界限制方法，便于外部调用
     layoutClamp() {
         this.layoutManager.layoutClamp();
     }

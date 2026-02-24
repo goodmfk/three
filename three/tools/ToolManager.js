@@ -161,10 +161,20 @@ export class ToolManager {
 
         this._raycaster.setFromCamera(this._mouse, this.viewer.camera);
 
-        const hits = this._raycaster.intersectObjects(
-            this.viewer.scene.children,
-            true
-        );
+        // 收集所有可拾取的物体，包括嵌套在layoutRoot中的模型实例
+        const allObjects = [];
+        this.viewer.scene.traverse((object) => {
+            // 排除世界边界
+            if (object.userData && object.userData.isBoundary) {
+                return;
+            }
+            // 只包括网格物体，提高性能
+            if (object.isMesh) {
+                allObjects.push(object);
+            }
+        });
+
+        const hits = this._raycaster.intersectObjects(allObjects, false);
 
         if (!hits.length) return null;
 
