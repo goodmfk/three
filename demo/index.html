@@ -11,14 +11,19 @@
 </head>
 
 <body>
-  <div class="d-flex gap-2 m-3">
-    <button class="btn btn-primary" id="loadModel1">Load GB48IB-MPB</button>
-    <button class="btn btn-primary" id="loadModel2">Load B1827FHRIB-MPB</button>
-    <button class="btn btn-primary" id="loadModel3">Load B3D1827IB-MPB</button>
-    <button class="btn btn-primary" id="loadModel4">Load SBB18RIB-MPB</button>
-    <!-- <button class="btn btn-primary" id="loadModel5">Load BEP28.530-2PK</button> -->
-    <button class="btn btn-danger" id="deleteButton" style="display: none;">Delete Selected</button>
-    <!-- <button class="btn btn-success" id="centerButton">Center Layout</button> -->
+  <div class="d-flex gap-2 m-3 flex-wrap">
+    <button class="btn btn-primary btn-sm" id="loadModel1"> GB48IB-MPB</button>
+    <button class="btn btn-primary btn-sm" id="loadModel6"> B1827FHLIB-MPB</button>
+    <button class="btn btn-primary btn-sm" id="loadModel2"> B1827FHRIB-MPB</button>
+    <button class="btn btn-primary btn-sm" id="loadModel3"> B3D1827IB-MPB</button>
+     <button class="btn btn-primary btn-sm" id="loadModel9"> SBB18LIB-MPB</button>
+    <button class="btn btn-primary btn-sm" id="loadModel4"> SBB18RIB-MPB</button>
+    <button class="btn btn-primary btn-sm" id="loadModel7"> B1827LIB-MPB</button>
+    <button class="btn btn-primary btn-sm" id="loadModel8"> B1827RIB-MPB</button>
+   <button class="btn btn-primary btn-sm" id="loadModel5"> BEP28.530-2PK</button>
+
+    <button class="btn btn-danger btn-sm" id="deleteButton" style="display: none;">Delete Selected</button>
+    <!-- <button class="btn btn-success btn-sm" id="centerButton">Center Layout</button> -->
   </div>
   <div id="app"></div>
   <script src="../three/initmap.js"></script>
@@ -46,6 +51,7 @@ console.log(viewer.layoutManager);
       }
     });
 
+
     const deleteButton = document.getElementById('deleteButton');
 
     pick.hooks.onSelect = function(tool, object) {
@@ -63,49 +69,20 @@ console.log(viewer.layoutManager);
                 selectedObject.parent.remove(selectedObject);
             }
             pick.clearSelection();
-            
-            // 删除模型后调整相机位置
-            viewer.getLayoutManager().layoutCenter();
-            fitCameraToObjects(viewer.camera, viewer.controls, viewer.layoutManager.getRoot().children);
+            // 删除模型后调整布局和相机
+            viewer.layoutCenter();
+            viewer.fitCameraToObjects();
         }
     });
-    
-    function fitCameraToObjects(camera, controls, objects, offset = 1.25) {
-        if (!objects || objects.length === 0) return;
-
-        const box = new THREE.Box3();
-
-        objects.forEach(obj => box.expandByObject(obj));
-
-        const size = box.getSize(new THREE.Vector3());
-        const center = box.getCenter(new THREE.Vector3());
-
-        const maxSize = Math.max(size.x, size.y, size.z);
-        const fov = THREE.MathUtils.degToRad(camera.fov);
-        let distance = maxSize / (2 * Math.tan(fov / 2));
-
-        distance *= offset;
-
-        const dir = new THREE.Vector3()
-            .subVectors(camera.position, controls.target)
-            .normalize();
-
-        camera.position.copy(center).add(dir.multiplyScalar(distance));
-
-        camera.near = distance / 100;
-        camera.far = distance * 100;
-        camera.updateProjectionMatrix();
-
-        controls.target.copy(center);
-        controls.update();
-    }
-
 
     viewer.tools.register("pick", pick);
     viewer.tools.enable("pick");
 
     
-const drag = new DragTool(viewer);
+// 初始化DragTool，传入WorldManager实例
+const drag = new DragTool(viewer, {
+  worldManager: viewer.getWorldManager()
+});
 
 viewer.tools.register("drag", drag);
     viewer.tools.enable("drag");
@@ -115,34 +92,10 @@ viewer.tools.register("drag", drag);
     const loadModel3Btn = document.getElementById('loadModel3');
     const loadModel4Btn = document.getElementById('loadModel4');
     
-    function calculateTotalWidth() {
-      const root = viewer.layoutManager.getRoot();
-      if (!root || root.children.length === 0) return 0;
-      
-      let totalWidth = 0;
-      root.children.forEach(child => {
-        const box = new THREE.Box3().setFromObject(child);
-        const size = box.getSize(new THREE.Vector3());
-        totalWidth += size.x;
-      });
-      return totalWidth;
-    }
-    
+    // 使用新的模型添加接口
     loadModel1Btn.addEventListener('click', async () => {
       try {
-        const model = await viewer.modelManager.loadModel("../glb/GB48IB-MPB.glb");
-        const box = new THREE.Box3().setFromObject(model.scene);
-        const size = box.getSize(new THREE.Vector3());
-        
-        const totalWidth = calculateTotalWidth();
-        const newPosition = new THREE.Vector3(totalWidth, 0, 0);
-        
-        const instance = viewer.instanceManager.createInstance(model, {
-          position: newPosition
-        });
-        
-        viewer.getLayoutManager().layoutCenter();
-        fitCameraToObjects(viewer.camera, viewer.controls, viewer.layoutManager.getRoot().children);
+        await viewer.addModel("../glb/GB48IB-MPB.glb");
       } catch (error) {
         console.error("Error loading model 1:", error);
       }
@@ -150,19 +103,7 @@ viewer.tools.register("drag", drag);
     
     loadModel2Btn.addEventListener('click', async () => {
       try {
-        const model = await viewer.modelManager.loadModel("../glb/B1827FHRIB-MPB.glb");
-        const box = new THREE.Box3().setFromObject(model.scene);
-        const size = box.getSize(new THREE.Vector3());
-        
-        const totalWidth = calculateTotalWidth();
-        const newPosition = new THREE.Vector3(totalWidth, 0, 0);
-        
-        const instance = viewer.instanceManager.createInstance(model, {
-          position: newPosition
-        });
-        
-        viewer.getLayoutManager().layoutCenter();
-        fitCameraToObjects(viewer.camera, viewer.controls, viewer.layoutManager.getRoot().children);
+        await viewer.addModel("../glb/B1827FHRIB-MPB.glb");
       } catch (error) {
         console.error("Error loading model 2:", error);
       }
@@ -170,19 +111,7 @@ viewer.tools.register("drag", drag);
     
     loadModel3Btn.addEventListener('click', async () => {
       try {
-        const model = await viewer.modelManager.loadModel("../glb/B3D1827IB-MPB.glb");
-        const box = new THREE.Box3().setFromObject(model.scene);
-        const size = box.getSize(new THREE.Vector3());
-        
-        const totalWidth = calculateTotalWidth();
-        const newPosition = new THREE.Vector3(totalWidth, 0, 0);
-        
-        const instance = viewer.instanceManager.createInstance(model, {
-          position: newPosition
-        });
-        
-        viewer.getLayoutManager().layoutCenter();
-        fitCameraToObjects(viewer.camera, viewer.controls, viewer.layoutManager.getRoot().children);
+        await viewer.addModel("../glb/B3D1827IB-MPB.glb");
       } catch (error) {
         console.error("Error loading model 3:", error);
       }
@@ -190,77 +119,72 @@ viewer.tools.register("drag", drag);
     
     loadModel4Btn.addEventListener('click', async () => {
       try {
-        const model = await viewer.modelManager.loadModel("../glb/SBB18RIB-MPB.glb");
-        const box = new THREE.Box3().setFromObject(model.scene);
-        const size = box.getSize(new THREE.Vector3());
-        
-        const totalWidth = calculateTotalWidth();
-        const newPosition = new THREE.Vector3(totalWidth, 0, 0);
-        
-        const instance = viewer.instanceManager.createInstance(model, {
-          position: newPosition
-        });
-        
-        viewer.getLayoutManager().layoutCenter();
-        fitCameraToObjects(viewer.camera, viewer.controls, viewer.layoutManager.getRoot().children);
+        await viewer.addModel("../glb/SBB18RIB-MPB.glb");
       } catch (error) {
         console.error("Error loading model 4:", error);
       }
     });
     
+    // 添加其他按钮的事件处理函数
+    const loadModel5Btn = document.getElementById('loadModel5');
+    const loadModel6Btn = document.getElementById('loadModel6');
+    const loadModel7Btn = document.getElementById('loadModel7');
+    const loadModel8Btn = document.getElementById('loadModel8');
+    const loadModel9Btn = document.getElementById('loadModel9');
+    
+    loadModel5Btn.addEventListener('click', async () => {
+      try {
+        await viewer.addModel("../glb/BEP28.530-2PK.glb");
+      } catch (error) {
+        console.error("Error loading model 5:", error);
+      }
+    });
+    
+    loadModel6Btn.addEventListener('click', async () => {
+      try {
+        await viewer.addModel("../glb/B1827FHLIB-MPB.glb");
+      } catch (error) {
+        console.error("Error loading model 6:", error);
+      }
+    });
+    
+    loadModel7Btn.addEventListener('click', async () => {
+      try {
+        await viewer.addModel("../glb/B1827LIB-MPB.glb");
+      } catch (error) {
+        console.error("Error loading model 7:", error);
+      }
+    });
+    
+    loadModel8Btn.addEventListener('click', async () => {
+      try {
+        await viewer.addModel("../glb/B1827RIB-MPB.glb");
+      } catch (error) {
+        console.error("Error loading model 8:", error);
+      }
+    });
+    
+    loadModel9Btn.addEventListener('click', async () => {
+      try {
+        await viewer.addModel("../glb/SBB18LIB-MPB.glb");
+      } catch (error) {
+        console.error("Error loading model 9:", error);
+      }
+    });
+    
     async function initializeScene() {
       try {
-        const model1 = await viewer.modelManager.loadModel("../glb/GB48IB-MPB.glb");
-        const model2 = await viewer.modelManager.loadModel("../glb/B1827FHRIB-MPB.glb");
-        const model3 = await viewer.modelManager.loadModel("../glb/B3D1827IB-MPB.glb");
-        const model4 = await viewer.modelManager.loadModel("../glb/SBB18RIB-MPB.glb");
-        // const model5 = await viewer.modelManager.loadModel("../glb/BEP28.530-2PK.glb");
-        
-        const box1 = new THREE.Box3().setFromObject(model1.scene);
-        const size1 = box1.getSize(new THREE.Vector3());
-        
-        const box2 = new THREE.Box3().setFromObject(model2.scene);
-        const size2 = box2.getSize(new THREE.Vector3());
-        
-        const box3 = new THREE.Box3().setFromObject(model3.scene);
-        const size3 = box3.getSize(new THREE.Vector3());
-        
-        const box4 = new THREE.Box3().setFromObject(model4.scene);
-        const size4 = box4.getSize(new THREE.Vector3());
-        
-        // const box5 = new THREE.Box3().setFromObject(model5.scene);
-        // const size5 = box5.getSize(new THREE.Vector3());
-        
-        const totalWidth = size1.x + size2.x + size3.x + size4.x;
-        let currentX = -totalWidth / 2;
-        
-        const instance1 = viewer.instanceManager.createInstance(model1, {
-          position: new THREE.Vector3(currentX + size1.x / 2, 0, 0)
-        });
-        currentX += size1.x;
-        
-        const instance2 = viewer.instanceManager.createInstance(model2, {
-          position: new THREE.Vector3(currentX + size2.x / 2, 0, 0)
-        });
-        currentX += size2.x;
-        
-        const instance3 = viewer.instanceManager.createInstance(model3, {
-          position: new THREE.Vector3(currentX + size3.x / 2, 0, 0)
-        });
-        currentX += size3.x;
-        
-        const instance4 = viewer.instanceManager.createInstance(model4, {
-          position: new THREE.Vector3(currentX + size4.x / 2, 0, 0)
-        });
-        currentX += size4.x;
+        // 使用批量加载模型的方法，按照index5.html的方式加载多个模型
+        await viewer.addModels([
+          "../glb/GB48IB-MPB.glb",
+          "../glb/B1827FHRIB-MPB.glb",
+          "../glb/B3D1827IB-MPB.glb",
+          "../glb/SBB18RIB-MPB.glb",
+          "../glb/B1827RIB-MPB.glb"
+        ]);
       } catch (error) {
         console.error("Error loading models:", error);
       }
-      
-      setTimeout(() => {
-        viewer.getLayoutManager().layoutCenter();
-        fitCameraToObjects(viewer.camera, viewer.controls, viewer.layoutManager.getRoot().children);
-      }, 100);
     }
 
     initializeScene();
