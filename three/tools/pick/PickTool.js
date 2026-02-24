@@ -184,6 +184,10 @@ export default class PickTool {
             ? resolvePickRoot(hit, this.viewer.scene)
             : hit;
         
+        if (pickedObject.userData && pickedObject.userData.isBoundary) {
+            return null;
+        }
+        
         return pickedObject;
     }
 

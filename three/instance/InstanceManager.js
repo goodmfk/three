@@ -2,15 +2,21 @@ import * as THREE from "three";
 import CabinetInstance from "./CabinetInstance.js";
 
 export default class InstanceManager {
-    constructor(layoutRoot, layoutState) {
+    constructor(layoutRoot, layoutState, worldManager = null) {
         this.layoutRoot = layoutRoot;
         this.layoutState = layoutState;
+        this.worldManager = worldManager;
         this.instances = new Map();
         this.nextInstanceId = 1;
     }
     
     createInstance(model, options = {}) {
         const instanceId = this.nextInstanceId++;
+        
+        // 如果没有指定位置，使用WorldManager计算初始位置
+        if (!options.position && this.worldManager) {
+            options.position = this.worldManager.calculateSpawnPosition(model);
+        }
         
         const instance = new CabinetInstance(instanceId, model, options);
         
@@ -21,6 +27,16 @@ export default class InstanceManager {
         this.instances.set(instanceId, instance);
         
         return instance;
+    }
+    
+    // 设置WorldManager
+    setWorldManager(worldManager) {
+        this.worldManager = worldManager;
+    }
+    
+    // 获取WorldManager
+    getWorldManager() {
+        return this.worldManager;
     }
     
     removeInstance(instanceId) {

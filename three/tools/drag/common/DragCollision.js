@@ -36,13 +36,37 @@ export default class DragCollision {
         const newCollidingObjects = new Set();
         const objects = this.getSceneObjects(scene, draggedObject);
 
+        // 只检测带有pickRoot标志的物体（模型实例）
+        const pickRootObjects = objects.filter(object => {
+            let current = object;
+            while (current) {
+                if (current.userData && current.userData.pickRoot) {
+                    return true;
+                }
+                if (!current.parent) {
+                    break;
+                }
+                current = current.parent;
+            }
+            return false;
+        });
+
+        // 如果没有其他物体，直接返回
+        if (pickRootObjects.length === 0) {
+            this.collidingObjects.clear();
+            return;
+        }
+
         const draggedBox = new THREE.Box3().setFromObject(draggedObject);
         const draggedCenter = draggedBox.getCenter(new THREE.Vector3());
-        const nearbyObjects = objects.filter(object => {
+        
+        // 扩大搜索范围，减少不必要的检测
+        const nearbyObjects = pickRootObjects.filter(object => {
             const objectBox = new THREE.Box3().setFromObject(object);
             const objectCenter = objectBox.getCenter(new THREE.Vector3());
             const distance = draggedCenter.distanceTo(objectCenter);
-            return distance < 1;
+            // 使用更大的距离阈值，减少计算量
+            return distance < 3;
         });
 
         for (const object of nearbyObjects) {

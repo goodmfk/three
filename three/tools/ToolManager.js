@@ -104,10 +104,6 @@ export class ToolManager {
     }
 
     handlePointerMove(e) {
-        if (this.viewer.updateSize) {
-            this.viewer.updateSize();
-        }
-        
         const rect = this.viewer.renderer.domElement.getBoundingClientRect();
         this._mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
         this._mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
@@ -173,6 +169,12 @@ export class ToolManager {
         if (!hits.length) return null;
 
         let hitObject = hits[0].object;
+        
+        // 如果击中的是边界对象，跳过
+        if (hitObject.userData && hitObject.userData.isBoundary) {
+            return null;
+        }
+        
         let pickRoot = null;
         
         let current = hitObject;

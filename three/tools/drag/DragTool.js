@@ -14,6 +14,7 @@ export const DragMode = {
 export default class DragTool {
     constructor(viewer, options = {}) {
         this.viewer = viewer;
+        this.worldManager = options.worldManager || null;
 
         const defaults = {
             enabled: true,
@@ -59,7 +60,8 @@ export default class DragTool {
         this.options = merged;
 
         const strategy = new ScreenDrag(viewer.camera, Object.assign({}, this.options.strategyOptions, {
-            layoutManager: this.viewer.layoutManager
+            layoutManager: this.viewer.layoutManager,
+            worldManager: this.worldManager
         }));
         this.strategy = strategy;
 
@@ -114,10 +116,6 @@ export default class DragTool {
 
     startDrag(object, mousePos) {
         if (!object) return;
-
-        if (this.viewer.updateSize) {
-            this.viewer.updateSize();
-        }
 
         this._raycaster.setFromCamera(mousePos, this.viewer.camera);
 
@@ -211,25 +209,49 @@ export default class DragTool {
 
         if (!newPosition) return;
 
-        const boundary = this.options.handler.boundary;
+        let finalPosition = newPosition;
 
-        if (boundary.enabled) {
-            const clampedPosition = this._clampPosition(newPosition);
-            if (!clampedPosition.equals(newPosition)) {
-                this._selectedObject.position.copy(clampedPosition);
+        // 首先使用WorldManager进行边界检查
+        if (this.worldManager && this.worldManager.bounds.enabled) {
+            // 转换为世界坐标进行检查
+            const worldPosition = this._selectedObject.parent ? 
+                this._selectedObject.parent.localToWorld(newPosition.clone()) : 
+                newPosition.clone();
+            
+            if (!this.worldManager.isInBounds(worldPosition)) {
+                const clampedWorldPosition = this.worldManager.clampPosition(worldPosition);
+                finalPosition = this._selectedObject.parent ? 
+                    this._selectedObject.parent.worldToLocal(clampedWorldPosition) : 
+                    clampedWorldPosition;
+                
                 if (this.hooks.onBoundaryExceeded) {
                     this.hooks.onBoundaryExceeded(this, this._selectedObject, {
                         attemptedPosition: newPosition,
-                        restoredPosition: clampedPosition,
-                        boundary: boundary
+                        restoredPosition: finalPosition,
+                        boundary: this.worldManager.bounds
                     });
                 }
-            } else {
-                this._selectedObject.position.copy(newPosition);
             }
-        } else {
-            this._selectedObject.position.copy(newPosition);
+        } 
+        // 如果没有WorldManager，使用传统的边界检查
+        else {
+            const boundary = this.options.handler.boundary;
+            if (boundary.enabled) {
+                const clampedPosition = this._clampPosition(newPosition);
+                if (!clampedPosition.equals(newPosition)) {
+                    finalPosition = clampedPosition;
+                    if (this.hooks.onBoundaryExceeded) {
+                        this.hooks.onBoundaryExceeded(this, this._selectedObject, {
+                            attemptedPosition: newPosition,
+                            restoredPosition: clampedPosition,
+                            boundary: boundary
+                        });
+                    }
+                }
+            }
         }
+
+        this._selectedObject.position.copy(finalPosition);
 
         this._lastMousePos.copy(mousePos);
 
