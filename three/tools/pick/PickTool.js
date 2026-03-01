@@ -159,7 +159,6 @@ export default class PickTool {
 
         if (this.pressedOnObject) return;
         
-        // 点击空白区域，立即清除选择并重新启用相机旋转控制
         this.clearSelection();
     }
 
@@ -171,14 +170,11 @@ export default class PickTool {
 
         this.raycaster.setFromCamera(this.mouse, this.viewer.camera);
 
-        // 收集所有可拾取的物体，包括嵌套在layoutRoot中的模型实例
         const allObjects = [];
         this.viewer.scene.traverse((object) => {
-            // 排除世界边界
             if (object.userData && object.userData.isBoundary) {
                 return;
             }
-            // 只包括网格物体，提高性能
             if (object.isMesh) {
                 allObjects.push(object);
             }
@@ -213,7 +209,6 @@ export default class PickTool {
 
         this.hooks.onSelect?.(this, object);
         
-        // 选中物体时，禁用相机旋转控制
         if (this.viewer.controls) {
             this.viewer.controls.enabled = false;
         }
@@ -231,7 +226,6 @@ export default class PickTool {
         this.selectedObject = null;
         this.hooks.onClear?.(this);
         
-        // 清除选择时，重新启用相机旋转控制
         if (this.viewer.controls) {
             this.viewer.controls.enabled = true;
         }

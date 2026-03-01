@@ -8,31 +8,145 @@
   <link rel="stylesheet" href="../css/initStyle.css" />
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+  <style>
+    body {
+      display: flex;
+      height: 100vh;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+    }
+
+    .sidebar {
+      width: 350px;
+      background-color: #f8f9fa;
+      border-left: 1px solid #dee2e6;
+      padding: 15px;
+      overflow-y: auto;
+      transition: width 0.3s ease, padding 0.3s ease;
+      position: relative;
+      flex: 0 0 auto;
+    }
+
+    .sidebar.collapsed {
+      width: 0;
+      padding: 0;
+      border-left: none;
+      overflow: hidden;
+    }
+
+    .sidebar.collapsed .sidebar-content {
+      display: none;
+    }
+
+    .sidebar-toggle {
+      position: fixed;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 34px;
+      height: 64px;
+      background-color: #f8f9fa;
+      border: 1px solid #dee2e6;
+      border-right: none;
+      border-radius: 6px 0 0 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 2000;
+      box-shadow: -2px 0 8px rgba(0, 0, 0, 0.12);
+      user-select: none;
+    }
+
+    .sidebar-toggle span {
+      font-size: 18px;
+      line-height: 1;
+    }
+
+    .main-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    #app {
+      width: 100%;
+      height: 100%;
+    }
+
+    .model-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-bottom: 20px;
+    }
+
+    .model-buttons .btn {
+      flex: 1 0 45%;
+      font-size: 12px;
+      padding: 5px;
+    }
+
+    .collision-strategy {
+      margin-bottom: 20px;
+    }
+  </style>
 </head>
 
 <body>
-  <div class="d-flex gap-2 m-3 flex-wrap">
-    <button class="btn btn-primary btn-sm" id="loadModel1"> GB48IB-MPB</button>
-    <button class="btn btn-primary btn-sm" id="loadModel6"> B1827FHLIB-MPB</button>
-    <button class="btn btn-primary btn-sm" id="loadModel2"> B1827FHRIB-MPB</button>
-    <button class="btn btn-primary btn-sm" id="loadModel3"> B3D1827IB-MPB</button>
-     <button class="btn btn-primary btn-sm" id="loadModel9"> SBB18LIB-MPB</button>
-    <button class="btn btn-primary btn-sm" id="loadModel4"> SBB18RIB-MPB</button>
-    <button class="btn btn-primary btn-sm" id="loadModel7"> B1827LIB-MPB</button>
-    <button class="btn btn-primary btn-sm" id="loadModel8"> B1827RIB-MPB</button>
-   <button class="btn btn-primary btn-sm" id="loadModel5"> BEP28.530-2PK</button>
-
-    <button class="btn btn-danger btn-sm" id="deleteButton" style="display: none;">Delete Selected</button>
-    <!-- <button class="btn btn-success btn-sm" id="centerButton">Center Layout</button> -->
+  <div class="main-content">
+    <div id="app"></div>
   </div>
-  <div id="app"></div>
+
+  <div class="sidebar">
+    <div class="sidebar-content">
+      <h5>Model Library</h5>
+      <div class="model-buttons">
+        <button class="btn btn-primary btn-sm" id="loadModel1">GB48IB-MPB</button>
+        <button class="btn btn-primary btn-sm" id="loadModel6">B1827FHLIB-MPB</button>
+        <button class="btn btn-primary btn-sm" id="loadModel2">B1827FHRIB-MPB</button>
+        <button class="btn btn-primary btn-sm" id="loadModel3">B3D1827IB-MPB</button>
+        <button class="btn btn-primary btn-sm" id="loadModel9">SBB18LIB-MPB</button>
+        <button class="btn btn-primary btn-sm" id="loadModel4">SBB18RIB-MPB</button>
+        <button class="btn btn-primary btn-sm" id="loadModel7">B1827LIB-MPB</button>
+        <button class="btn btn-primary btn-sm" id="loadModel8">B1827RIB-MPB</button>
+        <button class="btn btn-primary btn-sm" id="loadModel5">BEP28.530-2PK</button>
+      </div>
+
+      <div class="collision-strategy">
+        <h5>Collision Strategy</h5>
+        <div class="form-check">
+          <input class="form-check-input" type="radio" name="collisionStrategy" id="strategyReturn"
+            value="returnToOrigin" checked>
+          <label class="form-check-label" for="strategyReturn">Return to Origin</label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input" type="radio" name="collisionStrategy" id="strategyStrict"
+            value="strictCollision">
+          <label class="form-check-label" for="strategyStrict">Strict Collision</label>
+        </div>
+      </div>
+
+      <div class="mt-3">
+        <button class="btn btn-danger btn-sm w-100" id="deleteButton" style="display: none;">Delete Selected</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="sidebar-toggle" id="sidebarToggle">
+    <span>&gt;</span>
+  </div>
+
   <script src="../three/initmap.js"></script>
   <script type="module">
     import * as THREE from "three";
     import { Viewer } from "../three/core/Viewer.js";
-    import  PickTool  from "../three/tools/pick/PickTool.js";
-    import  DragTool  from "../three/tools/drag/DragTool.js";
+    import PickTool from "../three/tools/pick/PickTool.js";
+    import DragTool from "../three/tools/drag/DragTool.js";
     import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+
     const container = document.getElementById("app");
 
     const viewer = new Viewer(container, {
@@ -40,59 +154,79 @@
         pick: true,
       }
     });
-console.log(viewer.layoutManager);
-
 
     const pick = new PickTool(viewer, {
       focus: {
         enabled: true,
-     //   distance: 3,
         duration: 0.35
       }
     });
 
-
     const deleteButton = document.getElementById('deleteButton');
 
-    pick.hooks.onSelect = function(tool, object) {
-        deleteButton.style.display = 'inline-block';
+    pick.hooks.onSelect = function (tool, object) {
+      deleteButton.style.display = 'inline-block';
     };
 
-    pick.hooks.onClear = function(tool) {
-        deleteButton.style.display = 'none';
+    pick.hooks.onClear = function (tool) {
+      deleteButton.style.display = 'none';
     };
 
-    deleteButton.addEventListener('click', function() {
-        const selectedObject = pick.selectedObject;
-        if (selectedObject) {
-            if (selectedObject.parent) {
-                selectedObject.parent.remove(selectedObject);
-            }
-            pick.clearSelection();
-            // 删除模型后调整布局和相机
-            viewer.layoutCenter();
-            viewer.fitCameraToObjects();
+    deleteButton.addEventListener('click', function () {
+      const selectedObject = pick.selectedObject;
+      if (selectedObject) {
+        if (selectedObject.parent) {
+          selectedObject.parent.remove(selectedObject);
         }
+        pick.clearSelection();
+        viewer.layoutCenter();
+        viewer.fitCameraToObjects();
+      }
     });
 
     viewer.tools.register("pick", pick);
     viewer.tools.enable("pick");
 
-    
-// 初始化DragTool，传入WorldManager实例
-const drag = new DragTool(viewer, {
-  worldManager: viewer.getWorldManager()
-});
+    const drag = new DragTool(viewer, {
+      worldManager: viewer.getWorldManager(),
+      collision: {
+        enabled: true,
+        strategy: "returnToOrigin"
+      }
+    });
 
-viewer.tools.register("drag", drag);
+    const collisionStrategyRadios = document.querySelectorAll('input[name="collisionStrategy"]');
+    collisionStrategyRadios.forEach(radio => {
+      radio.addEventListener('change', function () {
+        if (this.checked) {
+          drag.options.collision.strategy = this.value;
+          console.log('Collision strategy changed to:', this.value);
+        }
+      });
+    });
+
+    let dragStartPosition = null;
+    drag.hooks.onDragStart = function (tool, object, event) {
+      dragStartPosition = object.position.clone();
+    };
+
+    drag.hooks.onDragEnd = function (tool, object, event) {
+      if (dragStartPosition) {
+        const displacement = object.position.distanceTo(dragStartPosition);
+        if (displacement > 0.1) {
+          viewer.adjustCameraAfterDrag();
+        }
+      }
+    };
+
+    viewer.tools.register("drag", drag);
     viewer.tools.enable("drag");
 
     const loadModel1Btn = document.getElementById('loadModel1');
     const loadModel2Btn = document.getElementById('loadModel2');
     const loadModel3Btn = document.getElementById('loadModel3');
     const loadModel4Btn = document.getElementById('loadModel4');
-    
-    // 使用新的模型添加接口
+
     loadModel1Btn.addEventListener('click', async () => {
       try {
         await viewer.addModel("../glb/GB48IB-MPB.glb");
@@ -100,7 +234,7 @@ viewer.tools.register("drag", drag);
         console.error("Error loading model 1:", error);
       }
     });
-    
+
     loadModel2Btn.addEventListener('click', async () => {
       try {
         await viewer.addModel("../glb/B1827FHRIB-MPB.glb");
@@ -108,7 +242,7 @@ viewer.tools.register("drag", drag);
         console.error("Error loading model 2:", error);
       }
     });
-    
+
     loadModel3Btn.addEventListener('click', async () => {
       try {
         await viewer.addModel("../glb/B3D1827IB-MPB.glb");
@@ -116,7 +250,7 @@ viewer.tools.register("drag", drag);
         console.error("Error loading model 3:", error);
       }
     });
-    
+
     loadModel4Btn.addEventListener('click', async () => {
       try {
         await viewer.addModel("../glb/SBB18RIB-MPB.glb");
@@ -124,14 +258,13 @@ viewer.tools.register("drag", drag);
         console.error("Error loading model 4:", error);
       }
     });
-    
-    // 添加其他按钮的事件处理函数
+
     const loadModel5Btn = document.getElementById('loadModel5');
     const loadModel6Btn = document.getElementById('loadModel6');
     const loadModel7Btn = document.getElementById('loadModel7');
     const loadModel8Btn = document.getElementById('loadModel8');
     const loadModel9Btn = document.getElementById('loadModel9');
-    
+
     loadModel5Btn.addEventListener('click', async () => {
       try {
         await viewer.addModel("../glb/BEP28.530-2PK.glb");
@@ -139,7 +272,7 @@ viewer.tools.register("drag", drag);
         console.error("Error loading model 5:", error);
       }
     });
-    
+
     loadModel6Btn.addEventListener('click', async () => {
       try {
         await viewer.addModel("../glb/B1827FHLIB-MPB.glb");
@@ -147,7 +280,7 @@ viewer.tools.register("drag", drag);
         console.error("Error loading model 6:", error);
       }
     });
-    
+
     loadModel7Btn.addEventListener('click', async () => {
       try {
         await viewer.addModel("../glb/B1827LIB-MPB.glb");
@@ -155,7 +288,7 @@ viewer.tools.register("drag", drag);
         console.error("Error loading model 7:", error);
       }
     });
-    
+
     loadModel8Btn.addEventListener('click', async () => {
       try {
         await viewer.addModel("../glb/B1827RIB-MPB.glb");
@@ -163,7 +296,7 @@ viewer.tools.register("drag", drag);
         console.error("Error loading model 8:", error);
       }
     });
-    
+
     loadModel9Btn.addEventListener('click', async () => {
       try {
         await viewer.addModel("../glb/SBB18LIB-MPB.glb");
@@ -171,10 +304,9 @@ viewer.tools.register("drag", drag);
         console.error("Error loading model 9:", error);
       }
     });
-    
+
     async function initializeScene() {
       try {
-        // 使用批量加载模型的方法，按照index5.html的方式加载多个模型
         await viewer.addModels([
           "../glb/GB48IB-MPB.glb",
           "../glb/B1827FHRIB-MPB.glb",
@@ -189,6 +321,28 @@ viewer.tools.register("drag", drag);
 
     initializeScene();
     viewer.start();
+
+    const sidebar = document.querySelector('.sidebar');
+    const sidebarToggle = document.getElementById('sidebarToggle');
+
+    const updateTogglePosition = () => {
+      const w = sidebar.classList.contains('collapsed') ? 0 : sidebar.offsetWidth;
+      sidebarToggle.style.right = w + 'px';
+    };
+
+    sidebarToggle.addEventListener('click', function () {
+      sidebar.classList.toggle('collapsed');
+      const toggleIcon = sidebarToggle.querySelector('span');
+      if (sidebar.classList.contains('collapsed')) {
+        toggleIcon.textContent = '<';
+      } else {
+        toggleIcon.textContent = '>';
+      }
+      updateTogglePosition();
+    });
+
+    window.addEventListener('resize', updateTogglePosition);
+    updateTogglePosition();
   </script>
 
 </body>

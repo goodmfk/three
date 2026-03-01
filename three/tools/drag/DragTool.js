@@ -5,6 +5,7 @@ import DragSession from "./DragSession.js";
 import CameraLockManager from "../camera/CameraLockManager.js";
 
 import ScreenDrag from "./strategies/ScreenDrag.js";
+import { getCollisionStrategy } from "./collisionStrategies/index.js";
 
 export const DragMode = {
     NONE: "none",
@@ -35,7 +36,8 @@ export default class DragTool {
                 }
             },
             collision: {
-                enabled: true
+                enabled: true,
+                strategy: "returnToOrigin"
             },
             feedback: {
                 enabled: true
@@ -135,6 +137,16 @@ export default class DragTool {
 
         this.dragSession.setObject(object);
 
+        this.dragSession.initialPosition.copy(object.position);
+        this.dragSession.initialRotation.copy(object.rotation);
+        this.dragSession.initialScale.copy(object.scale);
+
+        if (this.options.collision.enabled) {
+            const collisionStrategy = getCollisionStrategy(this.options.collision.strategy);
+            if (collisionStrategy.isRealTime && collisionStrategy.isRealTime()) {
+            }
+        }
+
         const success = this.strategy.start(this.dragSession, this._raycaster.ray, hitPoint);
 
         if (!success) {
@@ -188,10 +200,6 @@ export default class DragTool {
 
         this.dragSession.setMainAxis(mainAxis.axis);
 
-        // if (maxDot > 0.95) {
-        //     return DragMode.NONE;
-        // }
-
         return DragMode.PLANE;
     }
 
@@ -211,9 +219,7 @@ export default class DragTool {
 
         let finalPosition = newPosition;
 
-        // 首先使用WorldManager进行边界检查
         if (this.worldManager && this.worldManager.bounds.enabled) {
-            // 转换为世界坐标进行检查
             const worldPosition = this._selectedObject.parent ? 
                 this._selectedObject.parent.localToWorld(newPosition.clone()) : 
                 newPosition.clone();
@@ -233,7 +239,6 @@ export default class DragTool {
                 }
             }
         } 
-        // 如果没有WorldManager，使用传统的边界检查
         else {
             const boundary = this.options.handler.boundary;
             if (boundary.enabled) {
@@ -251,12 +256,50 @@ export default class DragTool {
             }
         }
 
+        if (this.options.collision.enabled) {
+            const collisionStrategy = getCollisionStrategy(this.options.collision.strategy);
+            if (collisionStrategy.isRealTime && collisionStrategy.isRealTime()) {
+                if (!this.dragSession.isSnapped) {
+                    let isColliding = false;
+                    
+                    const originalPosition = this._selectedObject.position.clone();
+                    
+                    this._selectedObject.position.copy(finalPosition);
+                    
+                    const draggedBox = new THREE.Box3().setFromObject(this._selectedObject);
+                    
+                    this._selectedObject.position.copy(originalPosition);
+                    
+                    const checkedObjects = new Set();
+                    
+                    this.viewer.scene.traverse((otherObject) => {
+                        if (otherObject.userData && otherObject.userData.pickRoot && !checkedObjects.has(otherObject)) {
+                            checkedObjects.add(otherObject);
+                            
+                            if (otherObject !== this._selectedObject) {
+                                const otherBox = new THREE.Box3().setFromObject(otherObject);
+                                
+                                if (draggedBox.intersectsBox(otherBox)) {
+                                    isColliding = true;
+                                }
+                            }
+                        }
+                    });
+                    
+                    if (isColliding) {
+                        return;
+                    }
+                }
+            }
+        } else {
+            this.collision.detectCollisions(this._selectedObject, this.viewer.scene);
+        }
+
         this._selectedObject.position.copy(finalPosition);
 
         this._lastMousePos.copy(mousePos);
 
         this.feedback.onDrag(this._selectedObject);
-        this.collision.detectCollisions(this._selectedObject, this.viewer.scene);
         if (this.hooks.onDrag) {
             this.hooks.onDrag(this, this._selectedObject, {
                 newPosition,
@@ -272,13 +315,54 @@ export default class DragTool {
 
         this.strategy.end(this.dragSession);
 
-        this._dragging = false;
-        this._selectedObject = null;
+        if (this.options.collision.enabled && !this.dragSession.isSnapped) {
+            let isColliding = false;
+            
+            let draggedRoot = object;
+            while (draggedRoot.parent && !draggedRoot.userData.pickRoot) {
+                draggedRoot = draggedRoot.parent;
+            }
+            
+            const draggedBox = new THREE.Box3().setFromObject(draggedRoot);
+            
+            const checkedRoots = new Set();
+            
+            this.viewer.scene.traverse((otherObject) => {
+                if (otherObject.userData && otherObject.userData.pickRoot && !checkedRoots.has(otherObject)) {
+                    checkedRoots.add(otherObject);
+                    
+                    if (otherObject !== draggedRoot) {
+                        const otherBox = new THREE.Box3().setFromObject(otherObject);
+                        
+                        if (draggedBox.intersectsBox(otherBox)) {
+                            isColliding = true;
+                        }
+                    }
+                }
+            });
+            
+            if (isColliding) {
+                const finalPosition = object.position.clone();
+                
+                const collisionStrategy = getCollisionStrategy(this.options.collision.strategy);
+                
+                const collisionInfo = {
+                    attemptedPosition: finalPosition,
+                    collidingObjects: [],
+                    strategy: this.options.collision.strategy
+                };
+                
+                collisionStrategy.handleCollision(this, object, collisionInfo);
+            }
+        }
 
         this.feedback.onDragEnd(object);
         this.collision.setDragging(false);
         this.collision.clear();
         this.cameraLockManager.releaseLock();
+
+        this._dragging = false;
+        this._selectedObject = null;
 
         if (this.hooks.onDragEnd) {
             this.hooks.onDragEnd(this, object, {
@@ -311,4 +395,5 @@ export default class DragTool {
             Math.max(boundary.minZ, Math.min(boundary.maxZ, position.z))
         );
     }
+
 }

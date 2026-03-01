@@ -27,31 +27,11 @@ export default class DragCollision {
     detectCollisions(draggedObject, scene) {
         if (!this.options.enabled) return;
 
-        if (!this._isDragging) return;
-
-        const now = Date.now();
-        if (now - this._lastDetectionTime < 16) return;
-        this._lastDetectionTime = now;
-
         const newCollidingObjects = new Set();
         const objects = this.getSceneObjects(scene, draggedObject);
 
-        // 只检测带有pickRoot标志的物体（模型实例）
-        const pickRootObjects = objects.filter(object => {
-            let current = object;
-            while (current) {
-                if (current.userData && current.userData.pickRoot) {
-                    return true;
-                }
-                if (!current.parent) {
-                    break;
-                }
-                current = current.parent;
-            }
-            return false;
-        });
+        const pickRootObjects = objects;
 
-        // 如果没有其他物体，直接返回
         if (pickRootObjects.length === 0) {
             this.collidingObjects.clear();
             return;
@@ -60,18 +40,16 @@ export default class DragCollision {
         const draggedBox = new THREE.Box3().setFromObject(draggedObject);
         const draggedCenter = draggedBox.getCenter(new THREE.Vector3());
         
-        // 扩大搜索范围，减少不必要的检测
         const nearbyObjects = pickRootObjects.filter(object => {
             const objectBox = new THREE.Box3().setFromObject(object);
             const objectCenter = objectBox.getCenter(new THREE.Vector3());
             const distance = draggedCenter.distanceTo(objectCenter);
-            // 使用更大的距离阈值，减少计算量
             return distance < 3;
         });
 
         for (const object of nearbyObjects) {
             const objectBox = new THREE.Box3().setFromObject(object);
-            if (draggedBox.intersectsBox(objectBox)) {
+            if (this._checkCollision(draggedBox, objectBox)) {
                 newCollidingObjects.add(object);
 
                 if (!this.collidingObjects.has(object)) {
@@ -92,20 +70,15 @@ export default class DragCollision {
     }
 
     getSceneObjects(scene, draggedObject) {
-        const currentTime = Date.now();
-        if (currentTime - this._lastCacheTime > this._cacheInterval) {
-            this._objectCache = [];
-            
-            scene.traverse((object) => {
-                if (object !== draggedObject && 
-                    object.isMesh && 
-                    object.visible) {
-                    this._objectCache.push(object);
-                }
-            });
-            
-            this._lastCacheTime = currentTime;
-        }
+        this._objectCache = [];
+        
+        scene.traverse((object) => {
+            if (object !== draggedObject && 
+                object.isMesh && 
+                object.visible) {
+                this._objectCache.push(object);
+            }
+        });
         
         return this._objectCache;
     }
@@ -120,5 +93,34 @@ export default class DragCollision {
 
     clear() {
         this.collidingObjects.clear();
+    }
+
+    _checkCollision(box1, box2) {
+        if (!box1.intersectsBox(box2)) {
+            return false;
+        }
+        
+        const overlapBox = new THREE.Box3().intersect(box1, box2);
+        const overlapSize = new THREE.Vector3();
+        overlapBox.getSize(overlapSize);
+        
+        const overlapVolume = overlapSize.x * overlapSize.y * overlapSize.z;
+        
+        const box1Size = new THREE.Vector3();
+        box1.getSize(box1Size);
+        const box1Volume = box1Size.x * box1Size.y * box1Size.z;
+        
+        const box2Size = new THREE.Vector3();
+        box2.getSize(box2Size);
+        const box2Volume = box2Size.x * box2Size.y * box2Size.z;
+        
+        const minVolume = Math.min(box1Volume, box2Volume);
+        
+        const collisionThreshold = 0.01;
+        if (overlapVolume / minVolume < collisionThreshold) {
+            return false;
+        }
+        
+        return true;
     }
 }

@@ -25,7 +25,7 @@ export class Viewer {
                         minZ: -5,
                         maxZ: 5,
                         margin: 0.1,
-                        shape: "square"//square   circle
+                        shape: "square"
                     },
                     spawnStrategy: {
                         gap: 0.5,
@@ -65,7 +65,7 @@ export class Viewer {
 
         this.worldManager.setScene(this.scene);
 
-       // this.worldManager.showBoundary();
+        this.worldManager.showBoundary();
     }
 
     initRenderer() {
@@ -152,6 +152,7 @@ export class Viewer {
     render() {
         this.renderer.render(this.scene, this.camera);
     }
+
     start() {
         let lastTime = performance.now();
 

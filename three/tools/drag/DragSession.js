@@ -21,6 +21,8 @@ export default class DragSession {
         
         this.grabPointWorld = null;
         this.grabOffset = null;
+        
+        this.isSnapped = false;
     }
     
     start(object, ray, hitPoint) {
@@ -42,6 +44,8 @@ export default class DragSession {
         
         this.grabPointWorld = hitPoint.clone();
         this.grabOffset = hitPoint.clone().sub(worldPos);
+        
+        this.isSnapped = false;
     }
     
     update(newPoint) {

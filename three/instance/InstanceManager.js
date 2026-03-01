@@ -13,7 +13,6 @@ export default class InstanceManager {
     createInstance(model, options = {}) {
         const instanceId = this.nextInstanceId++;
         
-        // 如果没有指定位置，使用WorldManager计算初始位置
         if (!options.position && this.worldManager) {
             options.position = this.worldManager.calculateSpawnPosition(model);
         }
@@ -29,12 +28,10 @@ export default class InstanceManager {
         return instance;
     }
     
-    // 设置WorldManager
     setWorldManager(worldManager) {
         this.worldManager = worldManager;
     }
     
-    // 获取WorldManager
     getWorldManager() {
         return this.worldManager;
     }

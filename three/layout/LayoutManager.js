@@ -9,7 +9,6 @@ export default class LayoutManager {
         this.layoutRoot.name = "LayoutRoot";
         this.scene.add(this.layoutRoot);
 
-        // 如果提供了WorldManager，设置布局根节点
         if (this.worldManager) {
             this.worldManager.setLayoutRoot(this.layoutRoot);
         }
@@ -27,7 +26,6 @@ export default class LayoutManager {
             return;
         }
 
-        // 过滤出带有pickRoot标志的子物体
         const pickRootChildren = this.layoutRoot.children.filter(child => 
             child.userData && child.userData.pickRoot
         );
@@ -36,26 +34,19 @@ export default class LayoutManager {
             return;
         }
 
-        // 当只有一个物体时，直接移动物体到中心
         if (pickRootChildren.length === 1) {
             const object = pickRootChildren[0];
             
-            // 计算物体在世界坐标系中的当前位置
             const worldPosition = object.getWorldPosition(new THREE.Vector3());
             
-            // 目标世界位置：原点，保持Y坐标不变
             const targetWorldPosition = new THREE.Vector3(0, worldPosition.y, 0);
             
-            // 转换为相对于layoutRoot的局部位置
             const targetLocalPosition = this.layoutRoot.worldToLocal(targetWorldPosition);
             
-            // 设置物体的局部位置
             object.position.copy(targetLocalPosition);
             this.layoutRoot.updateMatrixWorld(true);
         } 
-        // 当有多个物体时，移动整个layoutRoot使它们的中心回到原点
         else {
-            // 使用WorldManager计算世界中心
             if (this.worldManager) {
                 const center = this.worldManager.calculateWorldCenter();
                 
@@ -65,7 +56,6 @@ export default class LayoutManager {
                 this.layoutRoot.position.add(delta);
                 this.layoutRoot.updateMatrixWorld(true);
             } else {
-                // 传统方法作为后备
                 const boundingBox = this._tmp.boundingBox;
                 boundingBox.makeEmpty();
 
@@ -97,7 +87,6 @@ export default class LayoutManager {
             return;
         }
 
-        // 限制所有物体在世界边界内
         this.layoutRoot.children.forEach(child => {
             if (child.userData && child.userData.pickRoot) {
                 const position = this._tmp.position;
@@ -129,7 +118,6 @@ export default class LayoutManager {
         }
     }
 
-    // 设置WorldManager
     setWorldManager(worldManager) {
         this.worldManager = worldManager;
         if (worldManager) {
@@ -137,7 +125,6 @@ export default class LayoutManager {
         }
     }
 
-    // 获取WorldManager
     getWorldManager() {
         return this.worldManager;
     }

@@ -71,13 +71,9 @@ export default class ScreenDrag {
 
     end(dragSession) {
         const lm = this.options.layoutManager;
-        if (!lm) return;
-
-        const root = lm.getRoot();
-        if (!root) return;
-
-        // 总是在拖动结束后调用layoutCenter，确保整体居中
-        lm.layoutCenter();
+        if (lm && lm.layoutCenter) {
+            lm.layoutCenter();
+        }
     }
 
     _fitCameraToObjects() {
@@ -130,7 +126,7 @@ export default class ScreenDrag {
         const others = root.children;
         if (!others || others.length < 2) return;
 
-        const snapDistance = this.options.snap.distance || 0.5;
+        const snapDistance = this.options.snap.distance || 1.0;
         const minOverlapY = this.options.snap.minOverlapY || 0.02;
 
         object.updateMatrixWorld(true);
@@ -139,7 +135,7 @@ export default class ScreenDrag {
         boxA.getSize(objectSize);
 
         const nearbyTargets = [];
-        const preRange = snapDistance * 3;
+        const preRange = snapDistance * 5;
 
         for (const target of others) {
             if (target === object) continue;
@@ -156,16 +152,15 @@ export default class ScreenDrag {
             nearbyTargets.push({ target, boxB });
         }
 
-        if (nearbyTargets.length === 0) return;
-
         const clampAxis = (v, min, max) => {
             if (min > max) return (min + max) / 2;
             return Math.min(Math.max(v, min), max);
         };
 
-        let bestTarget = null;
         let bestSnapPos = null;
         let minDistance = Infinity;
+
+        const allSnapPositions = [];
 
         for (const { target, boxB } of nearbyTargets) {
             const zMin = boxB.min.z + objectSize.z / 2;
@@ -183,49 +178,97 @@ export default class ScreenDrag {
                 clampAxis(worldPos.z, zMin, zMax)
             );
 
-            const potentialSnapPositions = [snapRight, snapLeft];
+            allSnapPositions.push(snapRight, snapLeft);
+        }
 
-            for (const snapPos of potentialSnapPositions) {
-                const distance = worldPos.distanceTo(snapPos);
-                if (distance > snapDistance) continue;
-
-                if (distance < minDistance) {
-                    let collision = false;
-
-                    const savedPos = object.position.clone();
-                    const tempPos = object.parent ? object.parent.worldToLocal(snapPos.clone()) : snapPos;
-                    object.position.copy(tempPos);
-                    object.updateMatrixWorld(true);
-
-                    const testBox = new THREE.Box3().setFromObject(object);
-
-                    for (const entry of nearbyTargets) {
-                        const other = entry.target;
-                        if (other === object || other === target) continue;
-
-                        other.updateMatrixWorld(true);
-                        const otherBox = new THREE.Box3().setFromObject(other);
-                        if (testBox.intersectsBox(otherBox)) {
-                            collision = true;
-                            break;
-                        }
-                    }
-
-                    object.position.copy(savedPos);
-                    object.updateMatrixWorld(true);
-
-                    if (!collision) {
-                        minDistance = distance;
-                        bestTarget = target;
-                        bestSnapPos = snapPos;
-                    }
+        for (let i = 0; i < others.length; i++) {
+            for (let j = i + 1; j < others.length; j++) {
+                const model1 = others[i];
+                const model2 = others[j];
+                
+                if (model1 === object || model2 === object) continue;
+                
+                model1.updateMatrixWorld(true);
+                model2.updateMatrixWorld(true);
+                
+                const box1 = new THREE.Box3().setFromObject(model1);
+                const box2 = new THREE.Box3().setFromObject(model2);
+                
+                const overlapY = Math.min(box1.max.y, box2.max.y) - Math.max(box1.min.y, box2.min.y);
+                if (overlapY <= minOverlapY) continue;
+                
+                let gapCenterX, gapWidth;
+                if (box1.max.x < box2.min.x) {
+                    gapCenterX = (box1.max.x + box2.min.x) / 2;
+                    gapWidth = box2.min.x - box1.max.x;
+                } else if (box1.min.x > box2.max.x) {
+                    gapCenterX = (box1.min.x + box2.max.x) / 2;
+                    gapWidth = box1.min.x - box2.max.x;
+                } else {
+                    continue;
+                }
+                
+                const requiredWidth = objectSize.x + 0.02;
+                if (gapWidth >= requiredWidth * 0.7) {
+                    const zMin = Math.max(box1.min.z, box2.min.z) + objectSize.z / 2;
+                    const zMax = Math.min(box1.max.z, box2.max.z) - objectSize.z / 2;
+                    
+                    const snapToGap = new THREE.Vector3(
+                        gapCenterX,
+                        worldPos.y,
+                        clampAxis(worldPos.z, zMin, zMax)
+                    );
+                    
+                    allSnapPositions.push(snapToGap);
                 }
             }
         }
 
-        if (bestTarget && bestSnapPos) {
+        for (const snapPos of allSnapPositions) {
+            const distance = worldPos.distanceTo(snapPos);
+            if (distance > snapDistance) continue;
+
+            if (distance < minDistance) {
+                let collision = false;
+
+                const savedPos = object.position.clone();
+                const tempPos = object.parent ? object.parent.worldToLocal(snapPos.clone()) : snapPos;
+                object.position.copy(tempPos);
+                object.updateMatrixWorld(true);
+
+                const testBox = new THREE.Box3().setFromObject(object);
+
+                for (const other of others) {
+                    if (other === object) continue;
+
+                    other.updateMatrixWorld(true);
+                    const otherBox = new THREE.Box3().setFromObject(other);
+                    
+                    const safeDistance = 0.01;
+                    const expandedTestBox = testBox.clone();
+                    expandedTestBox.expandByScalar(-safeDistance);
+                    
+                    if (expandedTestBox.intersectsBox(otherBox)) {
+                        collision = true;
+                        break;
+                    }
+                }
+
+                object.position.copy(savedPos);
+                object.updateMatrixWorld(true);
+
+                if (!collision) {
+                    minDistance = distance;
+                    bestSnapPos = snapPos;
+                }
+            }
+        }
+
+        if (bestSnapPos) {
             worldPos.copy(bestSnapPos);
-            object.rotation.y = bestTarget.rotation.y;
+            dragSession.isSnapped = true;
+        } else {
+            dragSession.isSnapped = false;
         }
     }
 }
