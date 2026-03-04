@@ -132,6 +132,55 @@
       <div class="mt-3">
         <button class="btn btn-danger btn-sm w-100" id="deleteButton" style="display: none;">Delete Selected</button>
       </div>
+
+      <div class="mt-3">
+        <h5>Model Panel Color</h5>
+        <div class="form-check mb-2">
+          <input class="form-check-input" type="checkbox" id="changeAll">
+          <label class="form-check-label" for="changeAll">change all model color</label>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+          <button class="btn btn-sm" style="background-color: #878B8F; width: 30px; height: 30px; border: 1px solid #dee2e6;" data-color="#878B8F"></button>
+          <button class="btn btn-sm" style="background-color: #545959; width: 30px; height: 30px; border: 1px solid #dee2e6;" data-color="#545959"></button>
+          <button class="btn btn-sm" style="background-color: #3A2B22; width: 30px; height: 30px; border: 1px solid #dee2e6;" data-color="#3A2B22"></button>
+          <button class="btn btn-sm" style="background-color: #0E0C0D; width: 30px; height: 30px; border: 1px solid #dee2e6;" data-color="#0E0C0D"></button>
+          <button class="btn btn-sm" style="background-color: #203830; width: 30px; height: 30px; border: 1px solid #dee2e6;" data-color="#203830"></button>
+          <button class="btn btn-sm" style="background-color: #D8C9A7; width: 30px; height: 30px; border: 1px solid #dee2e6;" data-color="#D8C9A7"></button>
+          <button class="btn btn-sm" style="background-color: #21417A; width: 30px; height: 30px; border: 1px solid #dee2e6;" data-color="#21417A"></button>
+          <button class="btn btn-sm" style="background-color: #4C3A2E; width: 30px; height: 30px; border: 1px solid #dee2e6;" data-color="#4C3A2E"></button>
+        </div>
+      </div>
+
+      <div class="mt-3">
+        <button class="btn btn-secondary btn-sm w-100" id="resetColor">Reset Color</button>
+      </div>
+
+      <!-- Handle Color Section -->
+      <div class="mt-4">
+        <h6>Model Handle Color</h6>
+        <div class="form-check mb-2">
+          <input class="form-check-input" type="checkbox" id="changeAllHandle">
+          <label class="form-check-label" for="changeAllHandle">change all model handle color</label>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+          <button class="btn btn-sm" style="background-color: #878B8F; width: 30px; height: 30px; border: 1px solid #dee2e6;" data-handle-color="#878B8F"></button>
+          <button class="btn btn-sm" style="background-color: #545959; width: 30px; height: 30px; border: 1px solid #dee2e6;" data-handle-color="#545959"></button>
+          <button class="btn btn-sm" style="background-color: #3A2B22; width: 30px; height: 30px; border: 1px solid #dee2e6;" data-handle-color="#3A2B22"></button>
+          <button class="btn btn-sm" style="background-color: #0E0C0D; width: 30px; height: 30px; border: 1px solid #dee2e6;" data-handle-color="#0E0C0D"></button>
+          <button class="btn btn-sm" style="background-color: #203830; width: 30px; height: 30px; border: 1px solid #dee2e6;" data-handle-color="#203830"></button>
+          <button class="btn btn-sm" style="background-color: #D8C9A7; width: 30px; height: 30px; border: 1px solid #dee2e6;" data-handle-color="#D8C9A7"></button>
+          <button class="btn btn-sm" style="background-color: #21417A; width: 30px; height: 30px; border: 1px solid #dee2e6;" data-handle-color="#21417A"></button>
+          <button class="btn btn-sm" style="background-color: #4C3A2E; width: 30px; height: 30px; border: 1px solid #dee2e6;" data-handle-color="#4C3A2E"></button>
+        </div>
+      </div>
+
+      <div class="mt-3">
+        <button class="btn btn-secondary btn-sm w-100" id="resetHandleColor">Reset Handle Color</button>
+      </div>
+
+      <div class="mt-3">
+        <!-- <button class="btn btn-success btn-sm w-100" id="arMode">Switch to AR Mode</button> -->
+      </div>
     </div>
   </div>
 
@@ -343,6 +392,142 @@
 
     window.addEventListener('resize', updateTogglePosition);
     updateTogglePosition();
+
+    // 模型面板颜色切换功能
+    const colorButtons = document.querySelectorAll('[data-color]');
+    const resetColorButton = document.getElementById('resetColor');
+    
+    colorButtons.forEach(button => {
+      button.addEventListener('click', function () {
+        const color = this.getAttribute('data-color');
+        
+        // 为选中的颜色按钮添加边框效果
+        colorButtons.forEach(btn => {
+          btn.style.border = '1px solid #dee2e6';
+        });
+        this.style.border = '2px solid #007bff';
+        
+        // 检查是否要改变所有模型
+        const changeAll = document.getElementById('changeAll').checked;
+        
+        if (viewer.instanceManager) {
+          if (changeAll) {
+            // 改变所有模型的颜色
+            const instances = viewer.instanceManager.getAllInstances();
+            instances.forEach(instance => {
+              if (instance.changeColor) {
+                instance.changeColor(color, true);
+              }
+            });
+          } else {
+            // 只改变选中的模型的颜色
+            const selectedInstances = viewer.instanceManager.getSelectedInstances();
+            if (selectedInstances.length > 0) {
+              selectedInstances.forEach(instance => {
+                if (instance.changeColor) {
+                  instance.changeColor(color, true);
+                }
+              });
+            } else {
+              // 如果没有选中模型，提示用户
+              alert('Please select a model first');
+            }
+          }
+        }
+      });
+    });
+    
+    // 重置颜色功能
+    resetColorButton.addEventListener('click', function () {
+      // 重置颜色按钮的边框
+      colorButtons.forEach(btn => {
+        btn.style.border = '1px solid #dee2e6';
+      });
+      
+      // 重置拉手颜色按钮的边框
+      handleColorButtons.forEach(btn => {
+        btn.style.border = '1px solid #dee2e6';
+      });
+      
+      // 重置所有模型实例的颜色
+      if (viewer.instanceManager) {
+        const instances = viewer.instanceManager.getAllInstances();
+        instances.forEach(instance => {
+          if (instance.resetColor) {
+            instance.resetColor();
+          }
+        });
+      }
+    });
+
+    // 模型拉手颜色切换功能
+    const handleColorButtons = document.querySelectorAll('[data-handle-color]');
+    const resetHandleColorButton = document.getElementById('resetHandleColor');
+    
+    handleColorButtons.forEach(button => {
+      button.addEventListener('click', function () {
+        const color = this.getAttribute('data-handle-color');
+        
+        // 为选中的颜色按钮添加边框效果
+        handleColorButtons.forEach(btn => {
+          btn.style.border = '1px solid #dee2e6';
+        });
+        this.style.border = '2px solid #007bff';
+        
+        // 检查是否要改变所有模型
+        const changeAll = document.getElementById('changeAllHandle').checked;
+        
+        if (viewer.instanceManager) {
+          if (changeAll) {
+            // 改变所有模型的拉手颜色
+            const instances = viewer.instanceManager.getAllInstances();
+            instances.forEach(instance => {
+              if (instance.changeHandleColor) {
+                instance.changeHandleColor(color);
+              }
+            });
+          } else {
+            // 只改变选中的模型的拉手颜色
+            const selectedInstances = viewer.instanceManager.getSelectedInstances();
+            if (selectedInstances.length > 0) {
+              selectedInstances.forEach(instance => {
+                if (instance.changeHandleColor) {
+                  instance.changeHandleColor(color);
+                }
+              });
+            } else {
+              // 如果没有选中模型，提示用户
+              alert('Please select a model first');
+            }
+          }
+        }
+      });
+    });
+    
+    // 重置拉手颜色功能
+    resetHandleColorButton.addEventListener('click', function () {
+      // 重置拉手颜色按钮的边框
+      handleColorButtons.forEach(btn => {
+        btn.style.border = '1px solid #dee2e6';
+      });
+      
+      // 重置所有模型实例的拉手颜色
+      if (viewer.instanceManager) {
+        const instances = viewer.instanceManager.getAllInstances();
+        instances.forEach(instance => {
+          if (instance.resetHandleColor) {
+            instance.resetHandleColor();
+          }
+        });
+      }
+    });
+
+    const arModeButton = document.getElementById('arMode');
+    if (arModeButton) {
+      arModeButton.addEventListener('click', function () {
+        window.location.href = 'ar.html';
+      });
+    }
   </script>
 
 </body>

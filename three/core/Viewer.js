@@ -65,7 +65,7 @@ export class Viewer {
 
         this.worldManager.setScene(this.scene);
 
-        this.worldManager.showBoundary();
+        // this.worldManager.showBoundary();
     }
 
     initRenderer() {

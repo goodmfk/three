@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>无标记 AR（WebXR 兼容降级版）</title>
+  <style>
+    body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; background: #000; }
+    
+    /* 确保AR canvas不会覆盖UI */
+    canvas {
+      position: fixed !important;
+      z-index: 1 !important;
+    }
+    
+    /* 信息提示 */
+    #info {
+      position: fixed !important;
+      top: 16px !important;
+      left: 50% !important;
+      transform: translateX(-50%) !important;
+      z-index: 9999 !important;
+      color: #fff !important;
+      background: rgba(0,0,0,0.9) !important;
+      padding: 12px 16px !important;
+      border-radius: 10px !important;
+      max-width: 92vw !important;
+      text-align: center !important;
+      font-size: 14px !important;
+      line-height: 1.4 !important;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.3) !important;
+      pointer-events: auto !important;
+    }
+    
+    /* UI按钮容器 */
+    #ui {
+      position: fixed !important;
+      left: 50% !important;
+      bottom: 18px !important;
+      transform: translateX(-50%) !important;
+      display: flex !important;
+      gap: 10px !important;
+      z-index: 9999 !important;
+      background: rgba(0,0,0,0.9) !important;
+      padding: 12px 16px !important;
+      border-radius: 12px !important;
+      align-items: center !important;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.3) !important;
+      pointer-events: auto !important;
+    }
+    
+    /* 按钮样式 */
+    #ui button {
+      background: #6aa9ff !important;
+      color: #fff !important;
+      border: 0 !important;
+      padding: 12px 18px !important;
+      border-radius: 8px !important;
+      font-size: 16px !important;
+      cursor: pointer !important;
+      font-weight: bold !important;
+      pointer-events: auto !important;
+    }
+    
+    #ui button:active {
+      transform: scale(0.98) !important;
+    }
+    
+    /* 提示框 */
+    #toast {
+      position: fixed !important;
+      top: 50% !important;
+      left: 50% !important;
+      transform: translate(-50%, -50%) !important;
+      z-index: 9999 !important;
+      background: rgba(255,0,0,0.85) !important;
+      color: #fff !important;
+      padding: 12px 16px !important;
+      border-radius: 10px !important;
+      display: none !important;
+      max-width: 85vw !important;
+      text-align: center !important;
+      font-size: 14px !important;
+      line-height: 1.35 !important;
+      pointer-events: auto !important;
+    }
+  </style>
+  <script src="../three/initmap.js"></script>
+</head>
+<body>
+  <div id="info">点击“进入 AR”。如果不支持平面检测，也会至少显示一个固定在镜头前的模型。</div>
+  <div id="toast"></div>
+
+  <div id="ui">
+    <button id="enter-ar">进入 AR</button>
+    <button id="add-model">添加模型</button>
+    <button id="clear-models">清空</button>
+  </div>
+
+  <script type="module">
+    import * as THREE from "three";
+    import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+
+    let renderer, scene, camera;
+    let isAR = false;
+
+    let referenceSpace = null;
+    let viewerSpace = null;
+    let hitTestSource = null;
+    let supportsHitTest = false;
+
+    let reticle;
+    let modelCount = 0;
+    const placed = [];
+    let dragTarget = null;
+    let dragStart = new THREE.Vector2();
+    let dragDepth = 2;
+    const loader = new GLTFLoader();
+
+    function toast(message) {
+      const el = document.getElementById("toast");
+      el.textContent = message;
+      el.style.display = "block";
+      setTimeout(() => { el.style.display = "none"; }, 2500);
+    }
+
+    function setInfo(text) {
+      document.getElementById("info").textContent = text;
+    }
+
+    function initThree() {
+      scene = new THREE.Scene();
+      camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 30);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.xr.enabled = true;
+      document.body.appendChild(renderer.domElement);
+
+      const ambient = new THREE.HemisphereLight(0xffffff, 0x444444, 1);
+      scene.add(ambient);
+
+      const dir = new THREE.DirectionalLight(0xffffff, 0.8);
+      dir.position.set(1, 2, 1);
+      scene.add(dir);
+
+      // 创建一个更大更醒目的reticle
+      const ringGeo = new THREE.RingGeometry(0.1, 0.12, 32).rotateX(-Math.PI / 2);
+      const ringMat = new THREE.MeshBasicMaterial({ 
+        color: 0x00ff00, 
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.9
+      });
+      reticle = new THREE.Mesh(ringGeo, ringMat);
+      
+      // 添加外圈，使其更醒目
+      const outerRingGeo = new THREE.RingGeometry(0.13, 0.14, 32).rotateX(-Math.PI / 2);
+      const outerRingMat = new THREE.MeshBasicMaterial({ 
+        color: 0x00ff00, 
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.5
+      });
+      const outerRing = new THREE.Mesh(outerRingGeo, outerRingMat);
+      reticle.add(outerRing);
+      
+      reticle.matrixAutoUpdate = false;
+      reticle.visible = false;
+      scene.add(reticle);
+
+      window.addEventListener("resize", () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+
+      renderer.setAnimationLoop(render);
+
+      renderer.domElement.addEventListener("click", () => {
+        if (!isAR) return;
+        if (supportsHitTest) placeAtReticle();
+      });
+
+      // 拖动功能
+      renderer.domElement.addEventListener('mousedown', onMouseDown);
+      renderer.domElement.addEventListener('mousemove', onMouseMove);
+      renderer.domElement.addEventListener('mouseup', onMouseUp);
+      
+      // 触摸拖动
+      renderer.domElement.addEventListener('touchstart', onTouchStart);
+      renderer.domElement.addEventListener('touchmove', onTouchMove);
+      renderer.domElement.addEventListener('touchend', onTouchEnd);
+    }
+
+    function loadModel(callback) {
+      loader.load('../glb/GB48IB-MPB.glb', function (gltf) {
+        const model = gltf.scene;
+        model.scale.set(0.5, 0.5, 0.5);
+        callback(model);
+      }, function (xhr) {
+        if (xhr.loaded / xhr.total * 100 === 100) {
+          toast('模型加载完成');
+        }
+      }, function (error) {
+        toast('模型加载失败：' + error.message);
+        callback(null);
+      });
+    }
+
+    function placeFixedInFront() {
+      loadModel(function(model) {
+        if (model) {
+          model.position.set(0, 0, -1.5);
+          scene.add(model);
+          placed.push(model);
+          modelCount++;
+          toast(`已添加模型 ${modelCount}（固定在镜头前）`);
+        }
+      });
+    }
+
+    function placeAtReticle() {
+      if (!reticle.visible) {
+        toast("还没识别到平面，请对着地面/桌面慢慢扫一圈");
+        return;
+      }
+
+      loadModel(function(model) {
+        if (model) {
+          model.position.setFromMatrixPosition(reticle.matrix);
+
+          const rotation = new THREE.Matrix4().extractRotation(reticle.matrix);
+          model.quaternion.setFromRotationMatrix(rotation);
+
+          scene.add(model);
+          placed.push(model);
+          modelCount++;
+          toast(`已添加模型 ${modelCount}`);
+        }
+      });
+    }
+
+    function addModel() {
+      if (isAR) {
+        if (supportsHitTest) placeAtReticle();
+        else placeFixedInFront();
+        return;
+      }
+
+      loadModel(function(model) {
+        if (model) {
+          model.position.set((modelCount % 3 - 1) * 0.25, 1.2, -2.2);
+          scene.add(model);
+          placed.push(model);
+          modelCount++;
+          toast(`已添加模型 ${modelCount}（模拟模式）`);
+        }
+      });
+    }
+
+    function clearModels() {
+      for (const obj of placed) scene.remove(obj);
+      placed.length = 0;
+      modelCount = 0;
+      dragTarget = null;
+      toast("已清空所有模型");
+    }
+
+    // 拖动功能实现
+    function onMouseDown(event) {
+      const mouse = new THREE.Vector2();
+      mouse.set((event.clientX / window.innerWidth) * 2 - 1, -(event.clientY / window.innerHeight) * 2 + 1);
+      
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(mouse, camera);
+      
+      const intersects = raycaster.intersectObjects(placed, true);
+      if (intersects.length > 0) {
+        // 找到根模型
+        let clickedObject = intersects[0].object;
+        while (!placed.includes(clickedObject) && clickedObject.parent) {
+          clickedObject = clickedObject.parent;
+        }
+        dragTarget = clickedObject;
+        dragStart.set(event.clientX, event.clientY);
+        
+        // 计算拖动深度
+        const distance = camera.position.distanceTo(dragTarget.position);
+        dragDepth = distance;
+      }
+    }
+
+    function onMouseMove(event) {
+      if (!dragTarget) return;
+      
+      const deltaX = (event.clientX - dragStart.x) * 0.01 * dragDepth;
+      const deltaY = (event.clientY - dragStart.y) * 0.01 * dragDepth;
+      
+      dragTarget.position.x += deltaX;
+      dragTarget.position.y -= deltaY;
+      
+      dragStart.set(event.clientX, event.clientY);
+    }
+
+    function onMouseUp() {
+      dragTarget = null;
+    }
+
+    // 触摸事件处理
+    function onTouchStart(event) {
+      if (event.touches.length > 0) {
+        const touch = event.touches[0];
+        const mouseEvent = {
+          clientX: touch.clientX,
+          clientY: touch.clientY
+        };
+        onMouseDown(mouseEvent);
+      }
+    }
+
+    function onTouchMove(event) {
+      if (event.touches.length > 0 && dragTarget) {
+        event.preventDefault();
+        const touch = event.touches[0];
+        const mouseEvent = {
+          clientX: touch.clientX,
+          clientY: touch.clientY
+        };
+        onMouseMove(mouseEvent);
+      }
+    }
+
+    function onTouchEnd() {
+      onMouseUp();
+    }
+
+    async function tryReferenceSpace(session) {
+      const types = ["viewer", "local", "local-floor"];
+      for (const t of types) {
+        try {
+          const space = await session.requestReferenceSpace(t);
+          return { type: t, space };
+        } catch (e) {}
+      }
+      return null;
+    }
+
+    async function setupHitTest(session) {
+      supportsHitTest = false;
+      hitTestSource = null;
+      viewerSpace = null;
+
+      try {
+        viewerSpace = await session.requestReferenceSpace("viewer");
+      } catch (e) {
+        viewerSpace = null;
+      }
+
+      if (!viewerSpace) return;
+
+      try {
+        hitTestSource = await session.requestHitTestSource({ space: viewerSpace });
+        supportsHitTest = true;
+        
+        // 监听session的frame事件，确保hitTestSource能够更新
+        session.addEventListener('frame', (event) => {
+          if (hitTestSource) {
+            // hitTestSource会在每一帧自动更新
+          }
+        });
+      } catch (e) {
+        supportsHitTest = false;
+        hitTestSource = null;
+        console.error('Hit test setup error:', e);
+      }
+    }
+
+    async function enterAR() {
+      if (!location.protocol.includes("https") && location.hostname !== "localhost") {
+        setInfo("必须用 HTTPS 打开才能进入 AR。请用 ngrok 的 https 链接。");
+        toast("需要 HTTPS");
+        return;
+      }
+
+      if (!navigator.xr) {
+        setInfo("当前浏览器不支持 WebXR，无法进入 AR。");
+        toast("不支持 WebXR");
+        return;
+      }
+
+      let supported = false;
+      try {
+        supported = await navigator.xr.isSessionSupported("immersive-ar");
+      } catch (e) {
+        supported = false;
+      }
+
+      if (!supported) {
+        setInfo("当前设备/浏览器不支持 immersive-ar（无标记 AR）。");
+        toast("不支持 immersive-ar");
+        return;
+      }
+
+      let session;
+      try {
+        session = await navigator.xr.requestSession("immersive-ar", {
+          optionalFeatures: ["hit-test", "local-floor", "dom-overlay"],
+          requiredFeatures: ["hit-test"],
+          domOverlay: { root: document.body }
+        });
+      } catch (e) {
+        setInfo("请求 AR 会话失败：可能被拒绝权限或系统限制。");
+        toast("requestSession 失败");
+        return;
+      }
+
+      try {
+        await renderer.xr.setSession(session);
+      } catch (e) {
+        setInfo("绑定 AR 会话失败。");
+        toast("setSession 失败");
+        return;
+      }
+
+      const ref = await tryReferenceSpace(session);
+      if (!ref) {
+        setInfo("进入 AR 失败：设备不支持 viewer/local/local-floor reference space（这台机子 WebXR AR 不完整）。");
+        toast("referenceSpace 不支持");
+        try { session.end(); } catch (e) {}
+        return;
+      }
+
+      referenceSpace = ref.space;
+      isAR = true;
+
+      await setupHitTest(session);
+
+      if (supportsHitTest) {
+        setInfo(`已进入 AR ✅（referenceSpace: ${ref.type}）\n请慢慢对着地面/桌面扫一圈，寻找绿色旋转圆环\n看到圆环后点击屏幕放置模型`);
+        toast("已进入 AR（支持平面检测）\n请扫地面/桌面寻找绿色圆环");
+      } else {
+        reticle.visible = false;
+        setInfo(`已进入 AR ✅（referenceSpace: ${ref.type}）\n但不支持平面检测，将使用“固定在镜头前”的放置方式\n点击添加模型按钮即可`);
+        toast("已进入 AR（不支持平面检测）\n点击添加模型按钮放置模型");
+      }
+
+      session.addEventListener("end", () => {
+        isAR = false;
+        referenceSpace = null;
+        hitTestSource = null;
+        viewerSpace = null;
+        supportsHitTest = false;
+        reticle.visible = false;
+        setInfo("AR 已结束，回到模拟模式");
+      });
+    }
+
+    function render(timestamp, frame) {
+      if (isAR && frame && supportsHitTest && hitTestSource && referenceSpace) {
+        try {
+          const results = frame.getHitTestResults(hitTestSource);
+          if (results.length > 0) {
+            const pose = results[0].getPose(referenceSpace);
+            if (pose) {
+              reticle.visible = true;
+              reticle.matrix.fromArray(pose.transform.matrix);
+              
+              // 添加旋转动画，使reticle更醒目
+              reticle.rotation.y += 0.02;
+            } else {
+              reticle.visible = false;
+            }
+          } else {
+            reticle.visible = false;
+          }
+        } catch (e) {
+          console.error('Hit test error:', e);
+        }
+      }
+
+      renderer.render(scene, camera);
+    }
+
+    initThree();
+
+    document.getElementById("enter-ar").addEventListener("click", (e) => {
+      e.preventDefault();
+      enterAR();
+    });
+
+    document.getElementById("add-model").addEventListener("click", (e) => {
+      e.preventDefault();
+      addModel();
+    });
+
+    document.getElementById("clear-models").addEventListener("click", (e) => {
+      e.preventDefault();
+      clearModels();
+    });
+  </script>
+</body>
+</html>

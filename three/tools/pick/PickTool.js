@@ -207,6 +207,13 @@ export default class PickTool {
         this.rotateKeys?.select(object);
         this.customHandlers.forEach(h => h.select?.(object));
 
+        if (object && object.userData.instanceId) {
+            const instance = this.viewer.instanceManager.getInstance(object.userData.instanceId);
+            if (instance && instance.select) {
+                instance.select();
+            }
+        }
+
         this.hooks.onSelect?.(this, object);
         
         if (this.viewer.controls) {
@@ -216,6 +223,13 @@ export default class PickTool {
 
     clearSelection() {
         if (!this.selectedObject) return;
+
+        if (this.selectedObject && this.selectedObject.userData.instanceId) {
+            const instance = this.viewer.instanceManager.getInstance(this.selectedObject.userData.instanceId);
+            if (instance && instance.deselect) {
+                instance.deselect();
+            }
+        }
 
         this.highlight?.clear();
         this.ring?.clear();

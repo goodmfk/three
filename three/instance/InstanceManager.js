@@ -78,4 +78,8 @@ export default class InstanceManager {
             this.removeInstance(instanceId);
         }
     }
+    
+    getSelectedInstances() {
+        return Array.from(this.instances.values()).filter(instance => instance.isSelected);
+    }
 }
